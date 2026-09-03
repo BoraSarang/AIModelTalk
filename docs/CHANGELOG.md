@@ -28,6 +28,10 @@
 - **활성화한 모델만 필터 통일**: CompareModelPickerButton/SplitChatView/ComparisonView/BenchmarkView → `visibleModels(in:)` 공통 사용
 - **자동 스크롤**: 고정 높이 Markdown 렌더러에 `__AUTOSCROLL`/`scrollToBottom` 주입
 
+### 추가 기능 — 자동 제외 모델 정리 상태 표시 (커밋 e6ea29c)
+- **자동 정리(410/404) 모델을 별도 기록**: `autoDisabledKeys`(UserDefaults `autoDisabledModelKeys`) 영구 저장 — 수동 해제와 구분. `disableUnavailableModel` 시 기록, 사용자가 재활성화(`setEnabled(true)`)하면 기록 해제
+- **갱신 로그/설정에 정리 상태 표시**: 목록 갱신 완료 로그와 설정 하단 리포트에 "자동 제외(410/404) 모델 n개 유지" 병기
+
 ### 검증
 - macOS build_and_run 성공 · 단위 테스트 265건 통과(신규 UnavailableModelTests_V020 6건·ParallelComparisonTests_T201 3건 포함)
 
