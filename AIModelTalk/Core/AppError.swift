@@ -26,6 +26,19 @@ enum AppError: Error, LocalizedError {
         }
     }
 
+    /// 모델 EOL(410 Gone) — 명확한 모델 사용 종료. 공급자 무관 자동 비활성화 대상.
+    var isGone: Bool {
+        if case .serverError(let code, _) = self { return code == 410 }
+        return false
+    }
+
+    /// 모델 없음(404 Not Found) — 채팅/비교/판정 호출부에서만 모델 문제로 판정.
+    /// (모델 목록 조회에서의 404는 호출 방식/URL 오류일 수 있어 별도 구분)
+    var isModelNotFound: Bool {
+        if case .serverError(let code, _) = self { return code == 404 }
+        return false
+    }
+
     var errorDescription: String? {
         switch self {
         case .missingKey(let provider):

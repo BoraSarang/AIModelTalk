@@ -109,6 +109,13 @@ struct GeminiClient: ChatClient {
                         contents.append(RequestBody.Content(role: role, parts: parts))
                     }
 
+                    // Gemini는 마지막 콘텐츠가 model(assistant) 턴으로 끝나는 요청을 거부(400).
+                    // 비교/도구 등 대화 컨텍스트 스냅샷이 assistant로 끝날 수 있으므로,
+                    // 범용으로 마지막 턴이 model이면 보조 user 턴을 덧붙여 예방한다.
+                    if contents.last?.role == "model" {
+                        contents.append(RequestBody.Content(role: "user", parts: [.init(text: "계속하세요")]))
+                    }
+
                     let instruction = systemPrompt.map { RequestBody.Instruction(text: $0) }
                     let generationConfig = temperature.map { RequestBody.GenerationConfig(temperature: $0) }
                     let body = RequestBody(contents: contents, systemInstruction: instruction, generationConfig: generationConfig)

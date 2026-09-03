@@ -228,7 +228,9 @@ final class ComparisonService: ObservableObject {
             results[index].promptTokens = capture.promptTokens
             results[index].completionTokens = capture.completionTokens
         } catch let error as AppError {
-            results[index].error = "[\(error.errorCode)] \(error.localizedDescription ?? "")"
+            let disabled = ModelCatalog.shared.disableUnavailableModel(error: error, model: results[index].model)
+            let hint = Self.failureHint(for: error) + (disabled ? " (목록에서 자동 제외됨)" : "")
+            results[index].error = "[\(error.errorCode)] \(error.localizedDescription ?? "")\(hint.isEmpty ? "" : " — \(hint)")"
         } catch {
             results[index].error = "알 수 없는 오류"
         }
@@ -294,7 +296,11 @@ final class ComparisonService: ObservableObject {
                 DebugLogger.shared.warn("COMPARE", "[E-MAC-API-1002] 리포트 JSON 파싱 실패 — 텍스트 요약으로 폴백")
             }
         } catch let error as AppError {
+            // 판정 모델이 EOL(410)/모델 없음(404)이면 자동 비활성화하고, 다음 호출에서 다른 후보를 쓰도록 안내.
+            // 같은 run() 내에서의 재시도는 복잡도를 피하고, 다음 비교 때 자동 재선택된다.
+            let disabled = ModelCatalog.shared.disableUnavailableModel(error: error, model: judge)
             judgeSummary = "[\(error.errorCode)] 판정 실패: \(error.localizedDescription ?? "")"
+                + (disabled ? " — 판정 모델이 목록에서 자동 제외됨" : "")
             DebugLogger.shared.error("COMPARE", "판정 스트리밍 실패: \(judge.displayName)")
         } catch {
             judgeSummary = "판정 실패"
@@ -303,6 +309,20 @@ final class ComparisonService: ObservableObject {
     }
 
     // MARK: - 파싱/순위 헬퍼 (테스트 가능하도록 nonisolated static)
+
+    /// HTTP 상태코드별 사람이 읽기 쉬운 실패 사유 (비교·채팅 래인 문구 보강)
+    nonisolated static func failureHint(for error: AppError) -> String {
+        guard case .serverError(let code, _) = error else { return "" }
+        switch code {
+        case 410: return "모델이 사용 종료되었습니다"
+        case 404: return "모델을 찾을 수 없습니다"
+        case 402: return "API 잔액 부족"
+        case 400: return "요청 형식 오류"
+        case 401, 403: return "인증 실패 (API 키 확인)"
+        case 429: return "요청 한도/속도 초과"
+        default: return ""
+        }
+    }
 
     /// 판정 응답에서 JSON 추출·디코딩 — 코드펜스/주변 잡음 방어
     nonisolated static func parseVerdict(_ raw: String) -> JudgeVerdictPayload? {

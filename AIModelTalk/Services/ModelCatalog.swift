@@ -9,6 +9,8 @@ struct ProviderRefreshResult {
     let status: Status
     var addedCount = 0
     var removedCount = 0
+    /// 실패 사유 (status == .failed일 때 사용자 노출용) — 공급자 갱신 리포트 상세화
+    var errorMessage: String? = nil
 }
 
 struct CatalogRefreshReport {
@@ -20,6 +22,18 @@ struct CatalogRefreshReport {
         results.filter { $0.status == .failed }.map { $0.provider.rawValue }
     }
 
+    /// 모델 목록 조회 HTTP 상태코드 → 사람이 읽을 실패 사유.
+    /// 목록 조회 실패는 호출 방식/URL/인증 문제로, 개별 모델 자동 비활성화와 무관하다.
+    static func refreshFailureReason(_ code: Int) -> String {
+        switch code {
+        case 401, 403: return "인증 실패 (API 키 확인)"
+        case 404: return "목록 엔드포인트 404 — URL/방식 오류 확인"
+        case 429: return "요청 한도/속도 초과"
+        case 500...599: return "공급자 서버 오류 (HTTP \(code))"
+        default: return "공급자 오류 (HTTP \(code))"
+        }
+    }
+
     /// 사용자 노출용 요약 문구 — 설정 하단 버튼 바에 표시
     static func summaryText(_ results: [ProviderRefreshResult]) -> String {
         guard !results.isEmpty, !results.allSatisfy({ $0.status == .skipped }) else {
@@ -27,11 +41,30 @@ struct CatalogRefreshReport {
         }
         let added = results.reduce(0) { $0 + $1.addedCount }
         let removed = results.reduce(0) { $0 + $1.removedCount }
-        let failed = results.filter { $0.status == .failed }.map { $0.provider.rawValue }
-        if added == 0 && removed == 0 && failed.isEmpty { return "변경 없음" }
-        var parts = ["추가 \(added)개", "제거 \(removed)개"]
-        if !failed.isEmpty { parts.append("실패: \(failed.joined(separator: ", "))") }
-        return parts.joined(separator: " · ")
+        let okProviders = results.filter { $0.status == .ok }.map(\.provider.rawValue)
+        let failed = results.filter { $0.status == .failed }
+
+        if added == 0 && removed == 0 && failed.isEmpty && !okProviders.isEmpty {
+            return "변경 없음 (\(okProviders.joined(separator: ", ")))"
+        }
+
+        var parts: [String] = []
+        if added > 0 || removed > 0 {
+            var countPart = ""
+            if added > 0 { countPart += "추가 \(added)개" }
+            if removed > 0 { countPart += (countPart.isEmpty ? "" : ", ") + "제거 \(removed)개" }
+            parts.append(countPart + (okProviders.isEmpty ? "" : " (\(okProviders.joined(separator: ", ")))"))
+        } else if !okProviders.isEmpty {
+            parts.append("성공: \(okProviders.joined(separator: ", "))")
+        }
+        if !failed.isEmpty {
+            let detail = failed.map { r -> String in
+                let reason = r.errorMessage.flatMap { " (\($0))" } ?? ""
+                return "\(r.provider.rawValue)\(reason)"
+            }
+            parts.append("실패: \(detail.joined(separator: " · "))")
+        }
+        return parts.joined(separator: " / ")
     }
 }
 
@@ -155,6 +188,22 @@ final class ModelCatalog: ObservableObject {
         DebugLogger.shared.info("MODEL", "모델 사용 \(enabled ? "ON" : "OFF"): \(model.id)")
     }
 
+    /// 모델 EOL(410)/모델 없음(404) 응답 시 해당 모델을 자동 비활성화.
+    /// - 410(Gone)은 항상 모델 문제 → 무조건 비활성화
+    /// - 404(NotFound)는 호출부(채팅/비교/판정)에서만 모델 문제로 간주해 비활성화.
+    ///   모델 목록 조회(방식/URL 오류)에서의 404는 처리하지 않는다 — 호출부가 아닌 곳에선 호출하지 않도록.
+    /// UserDefaults(enabledOverrides) 영구 저장 → 원격 목록이 재추가돼도 visibleModels에서 숨김 유지.
+    @discardableResult
+    func disableUnavailableModel(error: Error, model: AIModel) -> Bool {
+        guard let appError = error as? AppError else { return false }
+        guard appError.isGone || appError.isModelNotFound else { return false }
+        guard isEnabled(model) else { return false }
+        setEnabled(model, false)
+        let reason = appError.isGone ? "EOL(410)" : "모델 없음(404)"
+        DebugLogger.shared.info("MODEL", "[FEATURE] \(reason) 응답 — 모델 자동 비활성화: \(model.provider.rawValue)/\(model.id)")
+        return true
+    }
+
     /// 피커 노출용 — 비활성 모델은 목록에서 완전 숨김 (v1.7 D4)
     func visibleModels(for provider: Provider) -> [AIModel] {
         models(for: provider).filter { isEnabled($0) }
@@ -228,11 +277,15 @@ final class ModelCatalog: ObservableObject {
         let results = await [openRouter, groq, nvidia, gemini, ollama, custom,
                              openAIOfficial, vercel, tokenRouter]
         let report = CatalogRefreshReport(results: results)
-        let failed = report.failedProviderNames
+        let failed = results.filter { $0.status == .failed }
+        let failedLog = failed.map { r -> String in
+            let reason = r.errorMessage ?? ""
+            return reason.isEmpty ? "\(r.provider.rawValue)" : "\(r.provider.rawValue)(\(reason))"
+        }
         DebugLogger.shared.info(
             "MODEL",
             "모델 목록 갱신 완료 — 추가 \(report.addedTotal)개 / 제거 \(report.removedTotal)개"
-                + (failed.isEmpty ? "" : " / 실패: \(failed.joined(separator: ", "))")
+                + (failedLog.isEmpty ? "" : " / 실패: \(failedLog.joined(separator: ", "))")
         )
         return report
     }
@@ -247,11 +300,17 @@ final class ModelCatalog: ObservableObject {
 
         DebugLogger.shared.info("MODEL", "Ollama: 모델 목록 조회 중… (\(baseURL))")
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(from: url)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                let reason = CatalogRefreshReport.refreshFailureReason(http.statusCode)
+                DebugLogger.shared.warn("MODEL", "E-MAC-OLLAMA-1001 Ollama 목록 조회 실패 (HTTP \(http.statusCode)) — \(reason)")
+                return ProviderRefreshResult(provider: .ollama, status: .failed, errorMessage: "Ollama \(reason)")
+            }
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let list = json["models"] as? [[String: Any]] else {
-                DebugLogger.shared.warn("MODEL", "E-MAC-OLLAMA-1001 Ollama 응답 파싱 실패")
-                return ProviderRefreshResult(provider: .ollama, status: .failed)
+                let reason = "응답 형식 오류"
+                DebugLogger.shared.warn("MODEL", "E-MAC-OLLAMA-1001 Ollama 응답 파싱 실패 — \(reason)")
+                return ProviderRefreshResult(provider: .ollama, status: .failed, errorMessage: "Ollama \(reason)")
             }
 
             var remoteModels: [AIModel] = []
@@ -262,8 +321,9 @@ final class ModelCatalog: ObservableObject {
             }
             return mergeRemoteModels(remoteModels, provider: .ollama)
         } catch {
-            DebugLogger.shared.warn("MODEL", "E-MAC-OLLAMA-1001 Ollama 서버 접속 실패: \(error.localizedDescription)")
-            return ProviderRefreshResult(provider: .ollama, status: .failed)
+            let reason = "서버 접속 실패 (로컬 Ollama 실행 확인)"
+            DebugLogger.shared.warn("MODEL", "E-MAC-OLLAMA-1001 \(reason): \(error.localizedDescription)")
+            return ProviderRefreshResult(provider: .ollama, status: .failed, errorMessage: "Ollama \(reason)")
         }
     }
 
@@ -319,7 +379,11 @@ final class ModelCatalog: ObservableObject {
         }
 
         let status: ProviderRefreshResult.Status = failedNames.count == endpoints.count ? .failed : .ok
-        return ProviderRefreshResult(provider: .custom, status: status, addedCount: addedTotal, removedCount: removedTotal)
+        var errorMessage: String? = nil
+        if !failedNames.isEmpty {
+            errorMessage = "엔드포인트 조회 실패: \(failedNames.joined(separator: ", "))"
+        }
+        return ProviderRefreshResult(provider: .custom, status: status, addedCount: addedTotal, removedCount: removedTotal, errorMessage: errorMessage)
     }
 
     /// 단일 엔드포인트 동기화 — 스테일 제거(스냅샷 기준) + 신규 추가 + 스냅샷 갱신 (v2.1 T-98)
@@ -389,16 +453,31 @@ final class ModelCatalog: ObservableObject {
         }
 
         guard let url = URL(string: "\(provider.baseURL)/models") else {
-            return ProviderRefreshResult(provider: provider, status: .failed)
+            return ProviderRefreshResult(provider: provider, status: .failed, errorMessage: "BaseURL 형식 오류")
         }
         DebugLogger.shared.info("MODEL", "\(provider.rawValue): 모델 목록 조회 중…")
         var req = URLRequest(url: url)
         req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        guard let (data, _) = try? await URLSession.shared.data(for: req),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              let http = response as? HTTPURLResponse else {
+            let reason = "서버 접속 실패 (네트워크 오류)"
+            DebugLogger.shared.warn("MODEL", "E-MAC-NET-1004 \(provider.rawValue) 모델 목록 조회 실패 — \(reason)")
+            return ProviderRefreshResult(provider: provider, status: .failed, errorMessage: reason)
+        }
+
+        let status = http.statusCode
+        guard (200..<300).contains(status) else {
+            // 모델 목록 조회의 4xx — 호출 방식/URL/인증 오류 (모델 문제 아님, 자동 비활성화 대상 아님)
+            let reason = CatalogRefreshReport.refreshFailureReason(status)
+            DebugLogger.shared.warn("MODEL", "E-MAC-NET-1004 \(provider.rawValue) 모델 목록 조회 실패 (HTTP \(status)) — \(reason)")
+            return ProviderRefreshResult(provider: provider, status: .failed, errorMessage: reason)
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let list = json["data"] as? [[String: Any]] else {
-            DebugLogger.shared.warn("MODEL", "E-MAC-NET-1004 \(provider.rawValue) 모델 목록 조회 실패")
-            return ProviderRefreshResult(provider: provider, status: .failed)
+            let reason = "응답 형식 오류"
+            DebugLogger.shared.warn("MODEL", "E-MAC-NET-1004 \(provider.rawValue) 모델 목록 조회 실패 — \(reason)")
+            return ProviderRefreshResult(provider: provider, status: .failed, errorMessage: reason)
         }
 
         var remoteModels: [AIModel] = []
@@ -450,16 +529,24 @@ final class ModelCatalog: ObservableObject {
             return ProviderRefreshResult(provider: .gemini, status: .skipped)
         }
         guard var comps = URLComponents(string: "\(Provider.gemini.baseURL)/v1beta/models") else {
-            return ProviderRefreshResult(provider: .gemini, status: .failed)
+            return ProviderRefreshResult(provider: .gemini, status: .failed, errorMessage: "Gemini URL 형식 오류")
         }
         comps.queryItems = [
             URLQueryItem(name: "key", value: key),
             URLQueryItem(name: "pageSize", value: "1000"),
         ]
-        guard let url = comps.url,
-              let (data, _) = try? await URLSession.shared.data(from: url) else {
+        guard let url = comps.url else {
+            return ProviderRefreshResult(provider: .gemini, status: .failed, errorMessage: "Gemini URL 형식 오류")
+        }
+        let (data, response) = await ((try? URLSession.shared.data(from: url)) ?? (Data(), nil))
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            let reason = CatalogRefreshReport.refreshFailureReason(http.statusCode)
+            DebugLogger.shared.warn("MODEL", "E-MAC-NET-1004 Gemini 모델 목록 조회 실패 (HTTP \(http.statusCode)) — \(reason)")
+            return ProviderRefreshResult(provider: .gemini, status: .failed, errorMessage: "Gemini \(reason)")
+        }
+        guard !data.isEmpty else {
             DebugLogger.shared.warn("MODEL", "E-MAC-NET-1004 Gemini 모델 목록 조회 실패")
-            return ProviderRefreshResult(provider: .gemini, status: .failed)
+            return ProviderRefreshResult(provider: .gemini, status: .failed, errorMessage: "Gemini 서버 접속 실패")
         }
 
         var geminiModels: [AIModel] = []
@@ -478,8 +565,9 @@ final class ModelCatalog: ObservableObject {
             }
             DebugLogger.shared.info("MODEL", "Gemini: 모델 목록 조회 중… → \(list.count)개 수신")
         } else {
-            DebugLogger.shared.warn("MODEL", "E-MAC-NET-1004 Gemini 응답 파싱 실패")
-            return ProviderRefreshResult(provider: .gemini, status: .failed)
+            let reason = "응답 형식 오류"
+            DebugLogger.shared.warn("MODEL", "E-MAC-NET-1004 Gemini 응답 파싱 실패 — \(reason)")
+            return ProviderRefreshResult(provider: .gemini, status: .failed, errorMessage: "Gemini \(reason)")
         }
         return mergeRemoteModels(geminiModels, provider: .gemini)
     }

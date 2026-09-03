@@ -26,7 +26,7 @@ final class CatalogRefreshReportTestsV171: XCTestCase {
             result(.groq, .ok),
             result(.nvidia, .ok),
         ])
-        XCTAssertEqual(text, "변경 없음")
+        XCTAssertEqual(text, "변경 없음 (Groq, NVIDIA)")
     }
 
     func testAddedAndRemoved() {
@@ -34,7 +34,7 @@ final class CatalogRefreshReportTestsV171: XCTestCase {
             result(.openRouter, .ok, added: 3, removed: 1),
             result(.groq, .ok),
         ])
-        XCTAssertEqual(text, "추가 3개 · 제거 1개")
+        XCTAssertEqual(text, "추가 3개, 제거 1개 (OpenRouter, Groq)")
     }
 
     func testPartialFailureListed() {
@@ -42,6 +42,6 @@ final class CatalogRefreshReportTestsV171: XCTestCase {
             result(.openRouter, .ok, added: 2),
             result(.groq, .failed),
         ])
-        XCTAssertEqual(text, "추가 2개 · 제거 0개 · 실패: Groq")
+        XCTAssertEqual(text, "추가 2개 (OpenRouter) / 실패: Groq")
     }
 }

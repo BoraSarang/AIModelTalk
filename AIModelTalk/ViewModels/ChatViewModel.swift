@@ -1280,12 +1280,20 @@ final class ChatViewModel: ObservableObject {
                     continue
                 }
 
+                // 모델 EOL(410)/모델 없음(404) — 공급자 무관 자동 비활성화 + 사용자 안내 (추가)
+                let appError = error as? AppError
+                let disabled = ModelCatalog.shared.disableUnavailableModel(error: error, model: ctx.model)
+                let hint = appError.map(ComparisonService.failureHint) ?? ""
+                let message = error.localizedDescription
+                    + (hint.isEmpty ? "" : " — \(hint)")
+                    + (disabled ? " (모델이 목록에서 자동 제외됨)" : "")
+
                 DebugLogger.shared.error("SEND", "에러: \(error.localizedDescription) (\(Int(elapsed))ms)")
                 // 사용자에게 에러 표시
                 self.finishStreaming(
                     messageID: ctx.assistantMessageID,
                     sessionID: ctx.sessionID,
-                    finalText: "⚠️ \(error.localizedDescription)"
+                    finalText: "⚠️ \(message)"
                 )
                 streamingMessageID = nil
                 break
