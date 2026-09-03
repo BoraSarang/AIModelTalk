@@ -671,6 +671,12 @@ final class ChatViewModel: ObservableObject {
 
     func selectModel(_ model: AIModel) {
         DebugLogger.shared.info("MODEL", "모델 변경: \(model.id) (\(model.provider.rawValue))")
+        // T-207 미드스위치 — 생성 중이면 정지 후 새 모델로 그 자리에 재전송
+        let wasStreaming = !isLoading && streamingMessageID != nil
+        let abortedAssistantID = streamingMessageID
+        if wasStreaming {
+            stopStreaming()
+        }
         selectedModel = model
         persistSelection()
         // 모델 변경 시 현재 세션 상태 동기화
@@ -679,6 +685,36 @@ final class ChatViewModel: ObservableObject {
             sessions[index].selectedSkills = selectedSkills
             saveSession(sessions[index])
         }
+        // 미드스위치 — 미완 어시스턴트 제거 후 마지막 사용자 프롬프트 재전송
+        if wasStreaming {
+            rerunAfterModelSwitch(model: model, abortedAssistantID: abortedAssistantID)
+        }
+    }
+
+    /// 미드스위치 재전송 (T-207) — 스트리밍 중단 후 미완 어시스턴트를 지우고 마지막 질문을 새 모델로 재전송
+    private func rerunAfterModelSwitch(model: AIModel, abortedAssistantID: UUID?) {
+        guard let sessionID = currentSessionID,
+              let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        // 미완 어시스턴트 메시지 제거
+        if let abortedID = abortedAssistantID {
+            mutateMessages(of: sessionID) { messages in
+                if let i = messages.firstIndex(where: { $0.id == abortedID }) {
+                    messages.remove(at: i)
+                } else if let last = messages.last, last.role == .assistant, last.content.isEmpty {
+                    messages.removeLast()
+                }
+            }
+        } else if let last = sessions[sessionIndex].messages.last, last.role == .assistant, last.content.isEmpty {
+            mutateMessages(of: sessionID) { messages in messages.removeLast() }
+        }
+        // 마지막 사용자 프롬프트 재전송 — 컨텍스트(이전 이력)는 유지됨
+        guard let userMsg = sessions.first(where: { $0.id == sessionID })?.messages.last(where: { $0.role == .user }) else { return }
+        let text = userMsg.content
+        let attachments = userMsg.attachments
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.sendMessage(text, to: sessionID, attachments: attachments ?? [], reuseLastUser: true)
+        }
+        DebugLogger.shared.info("MODEL", "[FEATURE] 미드스위치 → '\(model.displayName)'로 재전송: \(text.prefix(40))…")
     }
 
     func toggleSkill(_ skill: SkillInfo) {
@@ -1077,7 +1113,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// 메인 입력창·빠른 대화 패널 공통 전송 코어
-    func sendMessage(_ text: String, to sessionID: UUID, attachments: [MessageAttachment] = []) {
+    func sendMessage(_ text: String, to sessionID: UUID, attachments: [MessageAttachment] = [], reuseLastUser: Bool = false) {
         guard !text.isEmpty, !isLoading,
               let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }) else {
             // 조용한 차단은 재현 디버깅을 어렵게 한다 — 차단 사유 반드시 기록 (v2.1 T-104)
@@ -1089,8 +1125,11 @@ final class ChatViewModel: ObservableObject {
         DebugLogger.shared.info("SEND", "메시지 전송 시작: \(text.prefix(50))...")
         DebugLogger.shared.info("SEND", "모델: \(selectedModel.id) | 공급자: \(selectedModel.provider.rawValue)\(attachments.isEmpty ? "" : " | 이미지 \(attachments.count)개")")
 
-        let userMessage = ChatMessage(role: .user, content: text, attachments: attachments.isEmpty ? nil : attachments)
-        sessions[sessionIndex].messages.append(userMessage)
+        // 미드스위치 재전송(reuseLastUser)이면 마지막 사용자 메시지를 새로 추가하지 않고 재사용 (T-207)
+        if !reuseLastUser {
+            let userMessage = ChatMessage(role: .user, content: text, attachments: attachments.isEmpty ? nil : attachments)
+            sessions[sessionIndex].messages.append(userMessage)
+        }
         isLoading = true
 
         // 새 세션이면 제목 자동 설정 — 임시 접두사 + 보조 모델 LLM 제목 (v2.3 T-118)
@@ -1466,6 +1505,30 @@ final class ChatViewModel: ObservableObject {
         currentSessionID = forked.id
         saveSession(forked)
         DebugLogger.shared.info("FORK", "[FEATURE] 세션 분기 실행됨: '\(source.title)' → '\(forked.title)', 메시지 \(copiedMessages.count)개 복사")
+    }
+
+    /// 포크 재실행 (T-207) — 분기 후 분기점의 마지막 질문을 현재 선택 모델로 자동 재전송(비교/재실행)
+    func forkSessionAndRerun(at messageID: UUID, from sessionID: UUID) {
+        guard !isLoading else {
+            DebugLogger.shared.warn("FORK", "재실행 차단 — 응답 생성 중")
+            return
+        }
+        guard let source = sessions.first(where: { $0.id == sessionID }),
+              let cutIndex = source.messages.firstIndex(where: { $0.id == messageID }) else {
+            return
+        }
+        // 분기점 까지 히스토리에서 마지막 사용자 메시지가 재전송 대상
+        let slice = source.messages[source.messages.startIndex...cutIndex]
+        guard let lastUser = slice.last(where: { $0.role == .user }) else { return }
+        forkSession(at: messageID, from: sessionID)
+        let forkedID = currentSessionID ?? sessionID
+        let text = lastUser.content
+        let attachments = lastUser.attachments ?? []
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            // 포크 세션엔 이미 마지막 사용자 메시지가 복사돼 있으므로 재사용 (중복 append 방지)
+            self?.sendMessage(text, to: forkedID, attachments: attachments, reuseLastUser: true)
+        }
+        DebugLogger.shared.info("FORK", "[FEATURE] 포크 재실행: '\(source.title)' 분기점에서 '\(text.prefix(40))…' 재전송")
     }
 
     private func saveSession(_ session: ChatSession) {

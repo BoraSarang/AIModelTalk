@@ -222,6 +222,11 @@ struct MessageListView: View {
                                 } label: {
                                     Label("이 지점부터 분기", systemImage: "arrow.triangle.branch")
                                 }
+                                Button {
+                                    viewModel.forkSessionAndRerun(at: message.id, from: sessionID)
+                                } label: {
+                                    Label("이 지점에서 재실행 (현재 모델)", systemImage: "arrow.counterclockwise")
+                                }
                             }
                         }
                 }
