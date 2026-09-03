@@ -25,6 +25,10 @@ struct CompareOverlayView: View {
         }
         .padding(12)
         .background(.regularMaterial)
+        .onAppear {
+            // 비교 창이 뜨면 이전 선택을 모두 해제 — 다음 비교 재선택이 쉽도록 (v0.2.3)
+            viewModel.selectedCompareModelIDs.removeAll()
+        }
     }
 
     private var headerBar: some View {
@@ -241,15 +245,12 @@ private struct SentPayloadPanel: View {
 
             Divider()
 
-            // 시스템 프롬프트 — 채팅을 발송한 컨텍스트의 시스템 프롬프트 (비밀 아닌 부분만)
+            // 시스템 프롬프트 — 채팅을 발송한 컨텍스트의 시스템 프롬프트 (비밀 아닌 부분만), 마크다운 렌더링 (v0.2.3)
             Text("시스템 프롬프트")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(systemPromptPreview)
-                .font(.caption2)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: 320, alignment: .leading)
-                .textSelection(.enabled)
+            MarkdownRenderer(text: systemPromptPreview, isStreaming: false, fixedHeight: 140)
+                .frame(maxWidth: 320)
 
             Divider()
 
@@ -315,13 +316,8 @@ private struct SynthesisPanel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                ScrollView {
-                    Text(service.synthesisText)
-                        .font(.body)
-                        .frame(maxWidth: 360, alignment: .leading)
-                        .textSelection(.enabled)
-                }
-                .frame(height: 200)
+                MarkdownRenderer(text: service.synthesisText, isStreaming: false, fixedHeight: 200)
+                    .frame(maxWidth: 360)
             }
         }
         .padding(14)
@@ -366,7 +362,7 @@ private struct JudgeModelPicker: View {
     }
 }
 
-/// Diff 뷰어 패널 (T-206) — 두 래인의 텍스트를 라인 단위로 비교
+/// Diff 뷰어 패널 (T-206) — 두 래인의 답변을 마크다운으로 나란히 비교 (v0.2.3)
 private struct DiffPickerPanel: View {
     @ObservedObject var service: ComparisonService
     @State private var lhsIndex: Int = 0
@@ -377,37 +373,34 @@ private struct DiffPickerPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("텍스트 Diff")
+        VStack(alignment: .leading, spacing: 10) {
+            Text("답변 비교 (Diff)")
                 .font(.headline)
             if validResults.count >= 2 {
-                HStack {
+                HStack(spacing: 10) {
                     Picker("비교 A", selection: $lhsIndex) {
                         ForEach(validResults.indices, id: \.self) { i in
                             Text("\(validResults[i].result.model.displayName)").tag(i)
                         }
                     }
                     .labelsHidden()
-                    Text("↔")
+                    .frame(maxWidth: .infinity)
                     Picker("비교 B", selection: $rhsIndex) {
                         ForEach(validResults.indices, id: \.self) { i in
                             Text("\(validResults[i].result.model.displayName)").tag(i)
                         }
                     }
                     .labelsHidden()
+                    .frame(maxWidth: .infinity)
                 }
-                .fixedSize()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 1) {
-                        let lhs = validResults[lhsIndex].result.text
-                        let rhs = validResults[rhsIndex].result.text
-                        let lines = ComparisonService.textDiff(before: rhs, after: lhs)
-                        ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                            DiffRow(line: line)
-                        }
-                    }
+                Divider()
+                HStack(alignment: .top, spacing: 10) {
+                    MarkdownRenderer(text: validResults[lhsIndex].result.text, isStreaming: false, fixedHeight: 420)
+                        .frame(maxWidth: .infinity)
+                    Divider()
+                    MarkdownRenderer(text: validResults[rhsIndex].result.text, isStreaming: false, fixedHeight: 420)
+                        .frame(maxWidth: .infinity)
                 }
-                .frame(width: 360, height: 240)
             } else {
                 Text("비교할 성공한 답변이 2개 이상 필요합니다.")
                     .font(.caption)
@@ -415,38 +408,6 @@ private struct DiffPickerPanel: View {
             }
         }
         .padding(14)
-        .frame(width: 400)
-    }
-}
-
-/// Diff 한 줄 (T-206) — 삼항 연산 분리로 타이프체크 안정화
-private struct DiffRow: View {
-    let line: DiffLine
-
-    private var marker: String {
-        switch line.kind {
-        case .added: return "+"
-        case .removed: return "−"
-        default: return " "
-        }
-    }
-
-    private var tint: Color {
-        switch line.kind {
-        case .added: return .green
-        case .removed: return .red
-        default: return .secondary
-        }
-    }
-
-    var body: some View {
-        HStack {
-            Text(marker)
-                .foregroundStyle(tint)
-                .frame(width: 14, alignment: .leading)
-            Text(line.text)
-                .font(.caption2)
-                .foregroundStyle(line.kind == .same ? .primary : tint)
-        }
+        .frame(width: 900, height: 520)
     }
 }

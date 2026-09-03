@@ -220,7 +220,7 @@ struct ChatInputBarView: View {
             systemPromptEditor
         }
         .popover(isPresented: $showCompare, arrowEdge: .bottom) {
-            CompareModelPickerButton(viewModel: viewModel, isPresented: $showCompare).compareSelector
+            CompareSelectorView(viewModel: viewModel, isPresented: $showCompare)
         }
     }
 
