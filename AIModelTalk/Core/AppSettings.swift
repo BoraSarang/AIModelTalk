@@ -127,6 +127,16 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(showJudgeSummary, forKey: "showJudgeSummary") }
     }
 
+    /// 판정 모델 우선 공급자 (T-206) — nil이면 NVIDIA→차순위. provider rawValue 저장.
+    @Published var judgeProviderRaw: String? {
+        didSet { UserDefaults.standard.set(judgeProviderRaw, forKey: "judgeProviderRaw") }
+    }
+
+    /// 합성(synthesis) 활성화 (T-206) — 판정 모델이 여러 후보를 병합한 한 답변 생성
+    @Published var showSynthesis: Bool {
+        didSet { UserDefaults.standard.set(showSynthesis, forKey: "showSynthesis") }
+    }
+
     @Published var systemPrompt: String {
         didSet { UserDefaults.standard.set(systemPrompt, forKey: "systemPrompt") }
     }
@@ -194,6 +204,8 @@ final class AppSettings: ObservableObject {
         tavilyAPIKey = apiKeys.string(forKey: "tavilyAPIKey") ?? ""
         defaultModelID = defaults.string(forKey: "defaultModelID") ?? ""
         showJudgeSummary = defaults.object(forKey: "showJudgeSummary") as? Bool ?? true
+        judgeProviderRaw = defaults.string(forKey: "judgeProviderRaw")
+        showSynthesis = defaults.object(forKey: "showSynthesis") as? Bool ?? true
         systemPrompt = defaults.string(forKey: "systemPrompt") ?? "당신은 AI 모델입니다. 한국어로 답변해 주세요."
         accentColor = defaults.string(forKey: "accentColor") ?? "system"
         presentationMode = defaults.string(forKey: "presentationMode") ?? "window"

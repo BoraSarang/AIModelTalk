@@ -10,6 +10,9 @@ struct CompareOverlayView: View {
     @ObservedObject private var service = ComparisonService.shared
 
     @State private var showSentPanel = false
+    @State private var showSynthesisPanel = false
+    @State private var showJudgePicker = false
+    @State private var showDiff = false
 
     /// 어시스턴트 채택 대상 세션 — 현재 대화 세션
     private var sessionID: UUID { viewModel.currentSessionID ?? UUID() }
@@ -57,6 +60,46 @@ struct CompareOverlayView: View {
             .controlSize(.small)
             .popover(isPresented: $showSentPanel, arrowEdge: .top) {
                 SentPayloadPanel(viewModel: viewModel, service: service)
+            }
+            if service.results.contains(where: { $0.error == nil && !$0.text.isEmpty }) {
+                Button {
+                    showDiff.toggle()
+                } label: {
+                    Label("Diff", systemImage: "character.cursor.ibeam")
+                        .font(.caption2)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .popover(isPresented: $showDiff, arrowEdge: .top) {
+                    DiffPickerPanel(service: service)
+                }
+                Button {
+                    showJudgePicker.toggle()
+                } label: {
+                    Label("판정모델", systemImage: "checkmark.seal")
+                        .font(.caption2)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .popover(isPresented: $showJudgePicker, arrowEdge: .top) {
+                    JudgeModelPicker(service: service)
+                }
+                if AppSettings.shared.showSynthesis {
+                    Button {
+                        showSynthesisPanel.toggle()
+                    } label: {
+                        if service.isSynthesizing {
+                            ProgressView().controlSize(.small)
+                        }
+                        Label("합성", systemImage: "wand.and.stars")
+                            .font(.caption2)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .popover(isPresented: $showSynthesisPanel, arrowEdge: .top) {
+                        SynthesisPanel(service: service)
+                    }
+                }
             }
             Button("취소") {
                 viewModel.cancelComparison()
@@ -249,5 +292,161 @@ private struct SentPayloadPanel: View {
     private var systemPromptPreview: String {
         let p = viewModel.buildSystemPrompt()
         return p.isEmpty ? "(없음)" : String(p.prefix(400))
+    }
+}
+
+/// 합성(synthesis) 결과 패널 (T-206) — 판정 모델이 병합한 한 답변
+private struct SynthesisPanel: View {
+    @ObservedObject var service: ComparisonService
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("합성 답변")
+                .font(.headline)
+            if service.isSynthesizing {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("병합 중…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if service.synthesisText.isEmpty {
+                Text("합성 답변이 아직 없습니다. 결과가 모두 준비되면 자동 생성됩니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    Text(service.synthesisText)
+                        .font(.body)
+                        .frame(maxWidth: 360, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .frame(height: 200)
+            }
+        }
+        .padding(14)
+        .frame(width: 380)
+    }
+}
+
+/// 판정 모델 공급자 선택 패널 (T-206)
+private struct JudgeModelPicker: View {
+    @ObservedObject var service: ComparisonService
+    @AppStorage("judgeProviderRaw") private var judgeProviderRaw: String = ""
+
+    private var providers: [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for m in ModelCatalog.shared.models {
+            let raw = m.provider.rawValue
+            if seen.insert(raw).inserted { out.append(raw) }
+        }
+        return out.sorted()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("판정·합성 모델 공급자")
+                .font(.headline)
+            Text("선택한 공급자의 API 키가 있으면 해당 공급자를 우선해 판정·합성합니다.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: 260, alignment: .leading)
+            Picker("", selection: $judgeProviderRaw) {
+                Text("자동 (NVIDIA 우선)").tag("")
+                ForEach(providers, id: \.self) { p in
+                    Text(p.capitalized).tag(p)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+        }
+        .padding(14)
+        .frame(width: 280)
+    }
+}
+
+/// Diff 뷰어 패널 (T-206) — 두 래인의 텍스트를 라인 단위로 비교
+private struct DiffPickerPanel: View {
+    @ObservedObject var service: ComparisonService
+    @State private var lhsIndex: Int = 0
+    @State private var rhsIndex: Int = 1
+
+    private var validResults: [(index: Int, result: ComparisonResult)] {
+        service.results.enumerated().filter { $0.element.error == nil && !$0.element.text.isEmpty }.map { ($0.offset, $0.element) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("텍스트 Diff")
+                .font(.headline)
+            if validResults.count >= 2 {
+                HStack {
+                    Picker("비교 A", selection: $lhsIndex) {
+                        ForEach(validResults.indices, id: \.self) { i in
+                            Text("\(validResults[i].result.model.displayName)").tag(i)
+                        }
+                    }
+                    .labelsHidden()
+                    Text("↔")
+                    Picker("비교 B", selection: $rhsIndex) {
+                        ForEach(validResults.indices, id: \.self) { i in
+                            Text("\(validResults[i].result.model.displayName)").tag(i)
+                        }
+                    }
+                    .labelsHidden()
+                }
+                .fixedSize()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 1) {
+                        let lhs = validResults[lhsIndex].result.text
+                        let rhs = validResults[rhsIndex].result.text
+                        let lines = ComparisonService.textDiff(before: rhs, after: lhs)
+                        ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                            DiffRow(line: line)
+                        }
+                    }
+                }
+                .frame(width: 360, height: 240)
+            } else {
+                Text("비교할 성공한 답변이 2개 이상 필요합니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .frame(width: 400)
+    }
+}
+
+/// Diff 한 줄 (T-206) — 삼항 연산 분리로 타이프체크 안정화
+private struct DiffRow: View {
+    let line: DiffLine
+
+    private var marker: String {
+        switch line.kind {
+        case .added: return "+"
+        case .removed: return "−"
+        default: return " "
+        }
+    }
+
+    private var tint: Color {
+        switch line.kind {
+        case .added: return .green
+        case .removed: return .red
+        default: return .secondary
+        }
+    }
+
+    var body: some View {
+        HStack {
+            Text(marker)
+                .foregroundStyle(tint)
+                .frame(width: 14, alignment: .leading)
+            Text(line.text)
+                .font(.caption2)
+                .foregroundStyle(line.kind == .same ? .primary : tint)
+        }
     }
 }

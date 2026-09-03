@@ -132,6 +132,9 @@ final class ComparisonService: ObservableObject {
     @Published var isRunning: Bool = false
     @Published var judgeSummary: String = ""
     @Published var isJudging: Bool = false
+    /// 합성 답변 (T-206) — 판정 모델이 여러 후보를 병합한 한 답변
+    @Published var synthesisText: String = ""
+    @Published var isSynthesizing: Bool = false
     /// 루브릭 채점 — 파싱 성공 시 채워지고, 실패 시 judgeSummary 텍스트로 폴백 (v1.9 T-87)
 @Published var reportScores: [JudgeScore] = []
     @Published var winnerName: String? = nil
@@ -158,6 +161,9 @@ final class ComparisonService: ObservableObject {
 
         if AppSettings.shared.showJudgeSummary {
             await runJudge()
+        }
+        if AppSettings.shared.showSynthesis {
+            await synthesize()
         }
     }
 
@@ -200,6 +206,9 @@ final class ComparisonService: ObservableObject {
         }
         if AppSettings.shared.showJudgeSummary {
             await runJudge()
+        }
+        if AppSettings.shared.showSynthesis {
+            await synthesize()
         }
     }
 
@@ -420,10 +429,11 @@ final class ComparisonService: ObservableObject {
     }
 
     private func judgeModel() -> AIModel? {
-        // 호출 가능한 첫 모델을 판정자로 사용 (NVIDIA 우선)
-        // v1.9 T-85: 커스텀 엔드포인트(스토어 키/무인증 로컬)와 Ollama도 후보에 포함
+        // 호출 가능한 첫 모델을 판정자로 사용 (NVIDIA 우선, 사용자 지정 공급자 우선)
+        // v1.9 T-85: 커스텀 엔드포인트와 Ollama도 후보에 포함, T-206: judgeProviderRaw 우선
         let endpoints = CustomEndpointStore(defaults: CustomEndpointStore.suiteDefaults).endpoints
-        let candidates = ModelCatalog.shared.models.filter { model in
+        let preferredRaw = AppSettings.shared.judgeProviderRaw
+        var candidates = ModelCatalog.shared.models.filter { model in
             switch model.provider {
             case .ollama:
                 return true // 서버 다운이면 runJudge에서 에러 표시
@@ -439,10 +449,118 @@ final class ComparisonService: ObservableObject {
                 return !AppSettings.shared.apiKey(for: model.provider).isEmpty
             }
         }
+        // 선택 공급자가 지정되면 해당 provider부터 우선
+        if let preferredRaw,
+           let preferred = candidates.enumerated().first(where: { $0.element.provider.rawValue == preferredRaw }) {
+            return candidates[preferred.offset]
+        }
         let judge = candidates.first { $0.provider == .nvidia } ?? candidates.first
         if let judge {
             DebugLogger.shared.info("COMPARE", "판정 모델 선택: \(judge.provider.rawValue)/\(judge.displayName)")
         }
         return judge
     }
+
+    // MARK: - 합성 답변 (T-206)
+
+    /// 판정 모델(공급자 우선)이 여러 후보를 병합해 최선의 답변 한 개를 생성
+    func synthesize() async {
+        guard !results.isEmpty else { return }
+        guard let judge = judgeModel() else { return }
+        guard let client = try? AIClientFactory.client(provider: judge.provider, modelID: judge.id) else {
+            synthesisText = "합성에 사용할 판정 모델을 찾을 수 없습니다."
+            return
+        }
+        isSynthesizing = true
+        defer { isSynthesizing = false }
+
+        DebugLogger.shared.info("COMPARE", "[FEATURE] 합성 시작: \(judge.displayName), 후보 \(results.count)개")
+        var prompt = """
+        당신은 AI 답변 통합 전문가입니다. 같은 질문에 대한 여러 모델의 답변을 읽고 가장 정확·깔끔한 답변을 선택하되, \
+        부족한 부분은 다른 답변에서 보완해 하나의 완성된 답변으로 작성하세요.
+        반드시 질문에 대한 실제 답변 본문만 한국어로 출력하세요. 도입부나 설명·표기 없이 답변만 주세요.
+
+        질문: \(question)
+
+        """
+        for (index, r) in results.enumerated() where r.error == nil && !r.text.isEmpty {
+            prompt += "\n--- 후보[\(index + 1)] \(r.model.displayName) ---\n\(r.text)\n"
+        }
+        if results.allSatisfy({ $0.error != nil || $0.text.isEmpty }) {
+            synthesisText = "응답에 성공한 후보가 없어 합성을 만들 수 없습니다."
+            return
+        }
+
+        do {
+            var raw = ""
+            let stream = client.stream(messages: [ChatMessage(role: .user, content: prompt)], systemPrompt: nil)
+            for try await chunk in stream {
+                raw += chunk
+            }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            synthesisText = trimmed.isEmpty ? "합성 응답이 비어 있습니다." : trimmed
+            DebugLogger.shared.info("COMPARE", "합성 완료: \(synthesisText.count)자")
+        } catch let error as AppError {
+            let disabled = ModelCatalog.shared.disableUnavailableModel(error: error, model: judge)
+            synthesisText = "[\(error.errorCode)] 합성 실패: \(error.localizedDescription ?? "")"
+                + (disabled ? " — 합성 모델이 목록에서 자동 제외됨" : "")
+            DebugLogger.shared.error("COMPARE", "합성 스트리밍 실패: \(judge.displayName)")
+        } catch {
+            synthesisText = "합성 실패"
+            DebugLogger.shared.error("COMPARE", "합성 중 알 수 없는 오류")
+        }
+    }
+
+    // MARK: - 텍스트 Diff (T-206)
+
+    /// 라인 단위 Diff 연산 — 순수 함수 (LCS 기반). 공통/추가/제거 라인 목록 반환.
+    nonisolated static func textDiff(before: String, after: String) -> [DiffLine] {
+        let a = before.components(separatedBy: "\n")
+        let b = after.components(separatedBy: "\n")
+        let table = lcsTable(a, b)
+        var result: [DiffLine] = []
+        var i = 0, j = 0
+        while i < a.count || j < b.count {
+            if i < a.count && j < b.count && a[i] == b[j] {
+                result.append(DiffLine(kind: .same, text: a[i]))
+                i += 1; j += 1
+            } else if j < b.count && (i == a.count || lookup(table, i: i + 1, j: j) >= lookup(table, i: i, j: j + 1)) {
+                result.append(DiffLine(kind: .added, text: b[j]))
+                j += 1
+            } else if i < a.count {
+                result.append(DiffLine(kind: .removed, text: a[i]))
+                i += 1
+            } else {
+                break
+            }
+        }
+        return result
+    }
+
+    /// LCS 길이 표
+    private nonisolated static func lcsTable(_ a: [String], _ b: [String]) -> [[Int]] {
+        var table = Array(repeating: Array(repeating: 0, count: b.count + 1), count: a.count + 1)
+        for i in stride(from: a.count - 1, through: 0, by: -1) {
+            for j in stride(from: b.count - 1, through: 0, by: -1) {
+                table[i][j] = a[i] == b[j] ? table[i + 1][j + 1] + 1 : max(table[i + 1][j], table[i][j + 1])
+            }
+        }
+        return table
+    }
+
+    private nonisolated static func lookup(_ t: [[Int]], i: Int, j: Int) -> Int {
+        guard i < t.count, j < t[i].count else { return 0 }
+        return t[i][j]
+    }
+}
+
+/// Diff 라인 유형 (T-206)
+enum DiffKind: Equatable {
+    case same, added, removed
+}
+
+/// Diff 라인 한 줄 (T-206)
+struct DiffLine: Equatable {
+    let kind: DiffKind
+    let text: String
 }
