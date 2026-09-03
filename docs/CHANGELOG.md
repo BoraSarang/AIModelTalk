@@ -2,12 +2,12 @@
 
 이 프로젝트는 **v0.1.0** 초기 릴리스이며, 여기서부터 신규 출발합니다. (이전 이력 없음)
 
-## [0.2.0] — 2026-09-03 (Step A — 모델 테스트 심장)
+## [0.2.0] — 2026-09-03 (Step A·B — 모델 테스트 심장 + 에이전트 경험)
 
 > 범위 확정: Apple Intelligence 포함 / 단계별 커밋 / 우선순위 권장대로.
 > 상세 기획: `docs/plans/PLAN_v0.2.0_macos.md`
 
-### 신규 기능 (T-201 · T-202 · T-203 · T-206)
+### 신규 기능 (Step A — T-201 · T-202 · T-203 · T-206 · T-209)
 - **대화 내 병렬 모델 비교 (T-201)**: 입력창의 비교 버튼으로 여러 모델을 선택하면, 현재 대화 컨텍스트(`effectiveHistory`)를 모든 모델에 동시 발송해 나란히 스트리밍
   - 비교 오버레이 그리드: 래인별 TTFT/총시간/토큰/글자수 표시, 실패·스트리밍 상태 명시
   - "이 답변으로 대화 계속" — 선택한 래인을 세션의 어시스턴트 답변으로 채택
@@ -63,6 +63,23 @@
 - **성능 메트릭 확장**: 래인 헤더에 `tok/s`(실측 완료 토큰 ÷ 총 응답 시간) 추가
 - **"무엇을 보냈나" 패널**(`CompareOverlayView` 헤더 버튼): 파라미터 요약 · 시스템 프롬프트(400자) · 래인별 실측 토큰/시간 투명 표시
 - 채팅 단일 실행(`SendContext`)은 기존 온도 nil 기본값 유지 — 세션별 파라미터 저장은 후속(비교 래인별 우선)
+
+### 신규 기능 (Step B — 에이전트 경험 · 내장 도구 · 미드스위치 · 메모리/템플릿)
+- **Apple Intelligence 노출 (T-209)**: 시스템 모델(iCloud 날씨·Emoji 등)이 가능할 때(`appleAvailable`) 비교·Eval 가용 목록에 Apple 공급자 추가 — 순수 헬퍼로 단위 테스트(ChatViewModel.assemblePrompt 계열)
+- **내장 에이전트 도구 (T-204)**: web_search / fetch_url / calculator
+  - `WebSearchService`: `web_search`(draw 제공) 문맥 통합, `fetchURL`(SSRF 가드 `isSafeFetchURL` — 사설·루프백·링크로컬 차단, HTML 정제 4000자 캡), `evaluateCalculator`(화이트리스트 + 순수 재귀 하강 파서 `CalcParser`)
+  - `ToolLoopService.execute` 내장 도구 분기 + `builtinToolNames`, MCP 연결 실패 폴백
+  - `ChatViewModel.builtinToolDefinitions()` — 3개 내장 도구 JSON 스키마를 도구 루프에 공급
+- **에이전트 모드·YOLO (T-204)**: `agentMode`(내장 도구 활성), `yoloMode`(권한 자동 승인) 토글 — 일반 설정 UI, 도구 루프 진입 조건 `mcpToolsEnabled || agentMode`
+- **웹 검색 강화 (T-205)**: `parse_link` 상위 3개 URL 본문 추출(`enrichWithBodies`), 결과 포맷에 본문(〔본문〕)·인용 번호([n]) 포함
+- **모델 미드스위치·포크 재실행 (T-207)**: 스트리밍 중 모델 변경 시 정지 후 미완 어시스턴트 제거 → 동일 컨텍스트로 새 모델 즉시 재전송(`rerunAfterModelSwitch`), `sendMessage`에 `reuseLastUser`(중복 append 방지), 어시스턴트 우클릭 "이 지점에서 재실행 (현재 모델)"(`forkSessionAndRerun`)
+- **메모리 관리 화면 (T-208)**: 설정에 `메모리` 탭 — 목록(핀·최신순)·검색·핀 토글·듀레이션(영구/임시)·삭제·수동 추가(`MemorySettingsView`, `setMemoryDurability`)
+- **프롬프트 템플릿 (T-208)**: `PromptTemplate`/`PromptTemplateStore`(UserDefaults), 입력창 ⌘⇧T 팝오버로 삽입·저장·삭제, `{변수}` placeholder 변수 입력 후 치환(`applyTemplate`)
+- **토큰 예산 게이지 (T-208)**: 입력창 토큰 미터에 비율 막대 게이지 + 한도 초과 경고 시각화
+
+### 검증
+- 단위 테스트 **327건 전부 통과**(T-204~T-208 신규 9건: BuiltinToolTests/AppleIntelligenceTests/PromptTemplateTests 포함) · 빌드 성공 · `./build_and_run.sh debug macos` 설치/실행 확인
+- 전체 테스트는 **병렬 실행 불안정**(Ollama 등 네트워크 스위트 경합) → `-parallel-testing-enabled NO`로 실행 안정화 — 이후 게이트에 반영
 
 ### 검증
 - 단위 테스트 **286건 전부 통과**(신규 ModelParameterTests_T202 8건 — ModelParams.hasAny/Equatable·tok/s 2건 추가) · 빌드 성공

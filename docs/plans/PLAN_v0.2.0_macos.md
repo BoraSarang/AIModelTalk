@@ -13,6 +13,8 @@
 2. **단계별 커밋** — 비교 → 에이전트 → 경험 3단계로, 각 Step은 독립 커밋.
 3. **우선순위는 권장대로** — P0(비교) → P1(에이전트·검색) → P2(경험).
 
+> **진행 상태 (2026-09-03)**: Step A(B·C 포함) 전 티켓(T-204~T-209, T-216) **모두 커밋 완료**. 전체 테스트 327건 통과. 상세는 `docs/CHANGELOG.md`·`docs/TODO.md` 참조.
+
 ### 현재 0.1.0에서 이미 존재하는 자산 (조립·확장 성격)
 - `ComparisonService`: `ComparisonResult`(TTFT/총시간/토큰), `JudgeScore`(루브릭 0~10), `parseVerdict`, `rankedEntries`, `streamOne`(withTaskGroup 병렬).
 - `StreamManager`: 세션별 병렬 스트리밍(`start/stop/stopAll/isStreaming`).
@@ -92,11 +94,11 @@
 
 | Step | 커밋 | T-ID | 성격 |
 |---|---|---|---|
-| A | `feat(macos): 병렬 비교·파라미터·평가 그리드` | T-201,202(온도),203,206,209 | 모델 테스트 심장 |
-| B | `feat(macos): 내장 도구·웹검색 페이지 읽기·에이전트 모드` | T-204,205 | 일반 에이전트 |
-| C | `feat(macos): 미드스위치·포크 재실행·메모리·템플릿·예산게이지` | T-207,208 | 경험 완성도 |
+| A | `504e2f1` Eval · `10e402a` 합성/Diff · `fad17a7` 파라미터 · `5d8f633` Apple | T-203,206,202,209 | 모델 테스트 심장 |
+| B | `3328512`·`e70b04d` 내장 도구·에이전트 모드 · `cda77d4` 웹검색 강화 | T-204,205 | 일반 에이전트 |
+| C | `dc8caf3` 미드스위치·포크 재실행 · `b55b480` 메모리·템플릿·예산게이지 | T-207,208 | 경험 완성도 |
 
-각 Step: 문서 → 구현 → `./build_and_run.sh build macos` → smoke/unit → 커밋.
+각 Step: 문서 → 구현 → `./build_and_run.sh build macos` → smoke/unit → 커밋. (모두 완료)
 
 ### 커밋 A 실제 진행 (2026-09-03) — 범위 조정
 - **포함**: T-201 대화 내 병렬 비교(뷰A) · T-202 캐릭터별 **온도 전달**
