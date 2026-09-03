@@ -30,6 +30,9 @@ enum WebSearchError: LocalizedError {
     case missingAPIKey
     case httpStatus(Int, String)
     case emptyQuery
+    case fetchBlocked(String)   // T-204 SSRF 가드
+    case fetchTooLarge          // T-204 크기 캡
+    case calcInvalid(String)    // T-204 계산기
 
     var errorDescription: String? {
         switch self {
@@ -39,6 +42,12 @@ enum WebSearchError: LocalizedError {
             return "웹 검색 실패 (HTTP \(code)): \(body.prefix(200))"
         case .emptyQuery:
             return "검색어가 비어 있습니다."
+        case .fetchBlocked(let reason):
+            return "불러오기 차단: \(reason)"
+        case .fetchTooLarge:
+            return "페이지가 너무 커서 불러오지 못했습니다 (2MB 제한)."
+        case .calcInvalid(let reason):
+            return "계산 실패: \(reason)"
         }
     }
 
@@ -48,6 +57,9 @@ enum WebSearchError: LocalizedError {
         case .missingAPIKey: return "E-MAC-KEY-1003"
         case .httpStatus: return "E-MAC-NET-1004"
         case .emptyQuery: return "E-MAC-VALID-1002"
+        case .fetchBlocked: return "E-MAC-NET-1005"
+        case .fetchTooLarge: return "E-MAC-NET-1006"
+        case .calcInvalid: return "E-MAC-VALID-1003"
         }
     }
 }
@@ -142,4 +154,272 @@ enum WebSearchService {
         DebugLogger.shared.info("WEBSEARCH", "검색 완료: \(results.count)개 결과")
         return results
     }
+
+    // MARK: - 내장 fetch_url 도구 (T-204)
+
+    /// SSRF 가드 — 리터럴 사설/루프백/링크로컬 IP와 로컬 호스트명·비 HTTP(S) 차단 (T-204)
+    static func isSafeFetchURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            return false
+        }
+        guard let host = url.host?.lowercased() else { return false }
+        // 명시적 로컬 호스트명 차단
+        if host == "localhost" || host.hasSuffix(".local") || host.hasSuffix(".localhost") {
+            return false
+        }
+        // 리터럴 IPv4 주소만 파싱해 사설 대역 차단
+        if let addr = literalIPv4(host) {
+            return !(addr.isPrivate || addr.isLoopback || addr.isLinkLocal)
+        }
+        // 도메인명이면 허용 (공개 DNS로만 접근 — 상세 SSRF 방어는 서버측 정책)
+        return true
+    }
+
+    private static func literalIPv4(_ host: String) -> IPv4Address? {
+        var storage = in_addr()
+        if inet_pton(AF_INET, host, &storage) == 1 {
+            return IPv4Address(bigEndian: storage.s_addr)
+        }
+        return nil
+    }
+
+    /// 페이지 본문 페치 — HTML→텍스트 일부, 크기 캡(4000자·2MB)
+    static func fetchURL(_ url: URL, maxChars: Int = 4000) async throws -> String {
+        guard isSafeFetchURL(url) else {
+            throw WebSearchError.fetchBlocked("차단된 URL입니다. (http/https 공개 주소만 허용)")
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        request.setValue("AIModelTalk/0.2 (model-tester)", forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            throw WebSearchError.httpStatus(code, "")
+        }
+        guard data.count <= 2_000_000 else {
+            throw WebSearchError.fetchTooLarge
+        }
+        let body = stripHTML(String(data: data, encoding: .utf8) ?? "")
+        if body.count > maxChars {
+            return String(body.prefix(maxChars)) + "\n…[본문 너무 길어 \(body.count)자 중 \(maxChars)자 표시]"
+        }
+        return body
+    }
+
+    /// 간단 HTML → 텍스트 정제 (스크립트/스타일/태그 제거 + 공백 정리)
+    static func stripHTML(_ html: String) -> String {
+        var text = html
+        // 스크립트/스타일 블록 제거
+        text = text.replacingOccurrences(
+            of: "<script[^>]*>.*?</script>|<style[^>]*>.*?</style>",
+            with: " ", options: [.regularExpression, .caseInsensitive]
+        )
+        // 나머지 태그 제거
+        text = text.replacingOccurrences(
+            of: "<[^>]+>",
+            with: " ", options: [.regularExpression]
+        )
+        // 엔티티 디코딩 기초
+        text = text.replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+        // 공백·개행 정규화(3칸 이상 연속 공백 제거)
+        text = text.replacingOccurrences(of: " {2,}", with: " ", options: .regularExpression)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - 내장 calculator 도구 (T-204)
+
+    /// 안전한 사칙연산 표현식 평가 — 화이트리스트 문자(숫자·연산자·공백·소수점)만 허용, NSExpression 재평가
+    /// - Parameters:
+    ///   - offset: 최대 20자리 정수(오버플로 방지). 0이면 전역 한계.
+    /// - Throws: 파싱 실패·범위 초과 시 오류
+    static func evaluateCalculator(_ expression: String) throws -> Double {
+        let trimmed = expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw WebSearchError.calcInvalid("표현식이 비어 있습니다.") }
+        // 화이트리스트 검증
+        let allowed = CharacterSet(charactersIn: "0123456789+-*/()., ")
+        guard trimmed.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            throw WebSearchError.calcInvalid("숫자와 연산자(+ - * / ( ) .)만 허용합니다.")
+        }
+        // 연산자 연속·끝자리 연산자 거부
+        let opChars = CharacterSet(charactersIn: "+-*/")
+        let scalars = Array(trimmed.unicodeScalars)
+        for (i, scalar) in scalars.enumerated() {
+            if opChars.contains(scalar) {
+                if i > 0, opChars.contains(scalars[i - 1]) {
+                    throw WebSearchError.calcInvalid("연산자가 연속입니다.")
+                }
+            }
+        }
+        if let last = scalars.last, opChars.contains(last) {
+            throw WebSearchError.calcInvalid("표현식이 연산자로 끝납니다.")
+        }
+        if trimmed.contains(",") {
+            // 1,234 형식 쉼표 제거 후 숫자 검증
+            let noComma = trimmed.filter { $0 != "," }
+            if !noComma.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: "0123456789+-*/(). ").contains($0) }) {
+                throw WebSearchError.calcInvalid("잘못된 쉼표 사용입니다.")
+            }
+            let result = try evalSafe(noComma)
+            return result
+        }
+        return try evalSafe(trimmed)
+    }
+
+    private static func evalSafe(_ expression: String) throws -> Double {
+        // NSExpression은 context nil에서 크래시 위험이 있어 순수 재귀 하강 파서로 평가 (T-204)
+        var parser = CalcParser(fullExpression: expression)
+        do {
+            let value = try parser.parse()
+            guard value.isFinite else {
+                throw WebSearchError.calcInvalid("결과가 너무 크거나 무한입니다.")
+            }
+            return value
+        } catch let e as WebSearchError {
+            throw e
+        } catch {
+            throw WebSearchError.calcInvalid("표현식 해석 실패")
+        }
+    }
+}
+
+/// 사칙연산 재귀 하강 파서 (T-204) — + - * / 와 소수·괄호만 처리, NSExpression 크래시 회피
+private struct CalcParser {
+    let fullExpression: String
+    private var pos = 0
+
+    init(fullExpression: String) { self.fullExpression = fullExpression }
+
+    mutating func parse() throws -> Double {
+        let v = try parseAddSub()
+        skipSpaces()
+        if pos < fullExpression.count {
+            throw WebSearchError.calcInvalid("표현식 끝부분에 예상치 못한 문자가 있습니다.")
+        }
+        return v
+    }
+
+    private mutating func peek() -> Character? {
+        guard pos < fullExpression.count else { return nil }
+        return fullExpression[fullExpression.index(fullExpression.startIndex, offsetBy: pos)]
+    }
+
+    private mutating func skipSpaces() {
+        var idx = pos
+        let start = fullExpression.startIndex
+        while idx < fullExpression.count {
+            let ch = fullExpression[fullExpression.index(start, offsetBy: idx)]
+            if ch == " " { idx += 1 } else { break }
+        }
+        pos = idx
+    }
+
+    private mutating func parseAddSub() throws -> Double {
+        skipSpaces()
+        var value = try parseMulDiv()
+        while true {
+            skipSpaces()
+            guard let ch = peek() else { break }
+            if ch == "+" {
+                pos += 1
+                value += try parseMulDiv()
+            } else if ch == "-" {
+                pos += 1
+                value -= try parseMulDiv()
+            } else {
+                break
+            }
+        }
+        return value
+    }
+
+    private mutating func parseMulDiv() throws -> Double {
+        skipSpaces()
+        var value = try parsePrimary()
+        while true {
+            skipSpaces()
+            guard let ch = peek() else { break }
+            if ch == "*" {
+                pos += 1
+                value *= try parsePrimary()
+            } else if ch == "/" {
+                pos += 1
+                let divisor = try parsePrimary()
+                guard divisor != 0 else { throw WebSearchError.calcInvalid("0으로 나눌 수 없습니다.") }
+                value /= divisor
+            } else {
+                break
+            }
+        }
+        return value
+    }
+
+    private mutating func parsePrimary() throws -> Double {
+        skipSpaces()
+        guard let ch = peek() else { throw WebSearchError.calcInvalid("피연산자가 없습니다.") }
+        if ch == "(" {
+            pos += 1
+            let v = try parseAddSub()
+            skipSpaces()
+            guard peek() == ")" else { throw WebSearchError.calcInvalid("괄호가 닫히지 않았습니다.") }
+            pos += 1
+            return v
+        }
+        if ch == "+" {
+            pos += 1
+            return try parsePrimary()
+        }
+        if ch == "-" {
+            pos += 1
+            return -(try parsePrimary())
+        }
+        // 숫자
+        var idx = pos
+        let start = fullExpression.startIndex
+        var foundDigit = false
+        while idx < fullExpression.count {
+            let ch = fullExpression[fullExpression.index(start, offsetBy: idx)]
+            if ch.isNumber || ch == "." {
+                foundDigit = foundDigit || ch.isNumber
+                idx += 1
+            } else if ch == " " {
+                break
+            } else {
+                break
+            }
+        }
+        guard foundDigit else {
+            throw WebSearchError.calcInvalid("유효하지 않은 숫자입니다.")
+        }
+        let token = String(fullExpression[fullExpression.index(start, offsetBy: pos)..<fullExpression.index(start, offsetBy: idx)])
+        pos = idx
+        guard let value = Double(token) else {
+            throw WebSearchError.calcInvalid("숫자 변환 실패")
+        }
+        return value
+    }
+}
+
+// MARK: - 사설 IP 판정 (T-204)
+
+private struct IPv4Address: Equatable {
+    let bigEndian: UInt32
+
+    init(bigEndian: UInt32) { self.bigEndian = bigEndian }
+    init(_ a: UInt8, _ b: UInt8, _ c: UInt8, _ d: UInt8) {
+        bigEndian = UInt32(a) << 24 | UInt32(b) << 16 | UInt32(c) << 8 | UInt32(d)
+    }
+
+    var isPrivate: Bool {
+        let n = bigEndian.bigEndian
+        if n >> 24 == 10 { return true }                 // 10.0.0.0/8
+        if n >> 20 == 0xAC1 { return true }              // 172.16.0.0/12
+        if n >> 16 == 0xC0A8 { return true }            // 192.168.0.0/16
+        return false
+    }
+    var isLoopback: Bool { bigEndian.bigEndian >> 24 == 127 }  // 127.0.0.0/8
+    var isLinkLocal: Bool { bigEndian.bigEndian >> 16 == 0xA9FE }  // 169.254.0.0/16
 }

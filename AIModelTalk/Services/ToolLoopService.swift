@@ -107,8 +107,12 @@ enum ToolLoopService {
         case denied
     }
 
-    /// 단일 도구 실행 — 담당 서버 탐색 → MCP 호출 → 카드 기록 생성
+    /// 단일 도구 실행 — 내장 도구 우선(web_search/fetch_url/calculator, T-204) → 담당 서버 탐색 → MCP 호출 → 카드 기록 생성
     static func execute(call: LLMToolCall, connections: [any MCPTransportConnection]) async throws -> ExecutionRecord {
+        // 내장 도구 분기 (서버 연결 불필요)
+        if let record = await runBuiltinIfMatches(call: call) {
+            return record
+        }
         guard let connection = connections.first(where: { conn in
             conn.tools.contains { $0.name == call.name }
         }) else {
@@ -129,6 +133,70 @@ enum ToolLoopService {
         } catch {
             return ExecutionRecord(
                 toolName: call.name, argumentsJSON: call.argumentsJSON,
+                resultPreview: error.localizedDescription,
+                isError: true,
+                durationMS: Date().timeIntervalSince(start) * 1000)
+        }
+    }
+
+    // MARK: - 내장 도구 실행 (T-204)
+
+    /// 내장 도구 이름 집합 — 에이전트가 참조하는 툴 스키마와 매칭
+    static var builtinToolNames: Set<String> {
+        ["web_search", "fetch_url", "calculator"]
+    }
+
+    private static func runBuiltinIfMatches(call: LLMToolCall) async -> ExecutionRecord? {
+        let name = call.name
+        guard builtinToolNames.contains(name) else { return nil }
+        let start = Date()
+        let arguments = (try? JSONSerialization.jsonObject(with: Data(call.argumentsJSON.utf8)) as? [String: Any]) ?? [:]
+
+        do {
+            switch name {
+            case "web_search":
+                guard let query = arguments["query"] as? String, !query.isEmpty else {
+                    throw WebSearchError.emptyQuery
+                }
+                let key = AppSettings.shared.tavilyAPIKey
+                let results = try await WebSearchService.search(query: query, apiKey: key, maxResults: 5)
+                let text = results.isEmpty
+                    ? "검색 결과가 없습니다."
+                    : WebSearchService.formatResults(results, query: query)
+                DebugLogger.shared.info("TOOL", "[FEATURE] 내장 도구 web_search 실행: '\(query)' → \(results.count)건")
+                return ExecutionRecord(
+                    toolName: name, argumentsJSON: call.argumentsJSON,
+                    resultPreview: text, isError: false,
+                    durationMS: Date().timeIntervalSince(start) * 1000)
+
+            case "fetch_url":
+                let urlString = arguments["url"] as? String
+                guard let urlString, let url = URL(string: urlString) else {
+                    throw WebSearchError.fetchBlocked("올바른 URL이 아닙니다.")
+                }
+                let text = try await WebSearchService.fetchURL(url)
+                DebugLogger.shared.info("TOOL", "[FEATURE] 내장 도구 fetch_url 실행: \(url.host ?? "?") → \(text.count)자")
+                return ExecutionRecord(
+                    toolName: name, argumentsJSON: call.argumentsJSON,
+                    resultPreview: text, isError: false,
+                    durationMS: Date().timeIntervalSince(start) * 1000)
+
+            case "calculator":
+                let expr = arguments["expression"] as? String ?? ""
+                let result = try WebSearchService.evaluateCalculator(expr)
+                DebugLogger.shared.info("TOOL", "[FEATURE] 내장 도구 calculator 실행: \(expr) = \(result)")
+                return ExecutionRecord(
+                    toolName: name, argumentsJSON: call.argumentsJSON,
+                    resultPreview: "\(result)", isError: false,
+                    durationMS: Date().timeIntervalSince(start) * 1000)
+
+            default:
+                return nil
+            }
+        } catch {
+            DebugLogger.shared.error("TOOL", "내장 도구 \(name) 실패")
+            return ExecutionRecord(
+                toolName: name, argumentsJSON: call.argumentsJSON,
                 resultPreview: error.localizedDescription,
                 isError: true,
                 durationMS: Date().timeIntervalSince(start) * 1000)
