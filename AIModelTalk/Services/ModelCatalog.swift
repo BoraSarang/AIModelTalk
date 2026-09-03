@@ -79,10 +79,15 @@ final class ModelCatalog: ObservableObject {
 
     private let userDefaultsKey = "customModels"
     private let overridesKey = "modelEnabledOverrides"
+    /// 410/404 자동 정리로 비활성화된 모델 키(공급자:id) — 수동 해제와 구분해 별도 영구 저장 (v0.2.0)
+    private let autoDisabledKey = "autoDisabledModelKeys"
     /// 갱신으로 받아온 모델 ID 스냅샷(공급자별) — 원격에서 사라진 모델 제거 감지용 (v1.7.1 D2)
     private let refreshedIDsKey = "refreshedModelIDs"
     private var refreshedIDs: [String: [String]] = [:]
     private let defaults: UserDefaults
+
+    /// 자동 정리(410/404)로 비활성화된 모델 키 집합 — 수동 해제와 구분되어 갱신 로그/UI에 노출
+    @Published private(set) var autoDisabledKeys: Set<String> = []
 
     // MARK: - 정적 기본 목록 (무료 전용)
     static let defaultModels: [AIModel] = [
@@ -131,6 +136,7 @@ final class ModelCatalog: ObservableObject {
         models = Self.defaultModels
         loadCustomModels()
         loadEnabledOverrides()
+        autoDisabledKeys = Set((defaults.array(forKey: autoDisabledKey) as? [String]) ?? [])
     }
 
     // MARK: - 모델 추가/삭제
@@ -183,8 +189,14 @@ final class ModelCatalog: ObservableObject {
     }
 
     func setEnabled(_ model: AIModel, _ enabled: Bool) {
-        enabledOverrides[overrideKey(model)] = enabled
+        let key = overrideKey(model)
+        enabledOverrides[key] = enabled
         defaults.set(enabledOverrides, forKey: overridesKey)
+        // 재활성화 시 자동 제외(410/404) 기록 해제 — 사용자가 다시 켠 모델은 정리 상태에서 빼줌
+        if enabled, autoDisabledKeys.contains(key) {
+            autoDisabledKeys.remove(key)
+            defaults.set(Array(autoDisabledKeys), forKey: autoDisabledKey)
+        }
         DebugLogger.shared.info("MODEL", "모델 사용 \(enabled ? "ON" : "OFF"): \(model.id)")
     }
 
@@ -199,10 +211,22 @@ final class ModelCatalog: ObservableObject {
         guard appError.isGone || appError.isModelNotFound else { return false }
         guard isEnabled(model) else { return false }
         setEnabled(model, false)
+        recordAutoDisabled(model)
         let reason = appError.isGone ? "EOL(410)" : "모델 없음(404)"
         DebugLogger.shared.info("MODEL", "[FEATURE] \(reason) 응답 — 모델 자동 비활성화: \(model.provider.rawValue)/\(model.id)")
         return true
     }
+
+    /// 자동 정리(410/404)로 제외된 모델 키를 별도 기록 — 수동 해제와 구분해 갱신 로그/UI에 노출.
+    private func recordAutoDisabled(_ model: AIModel) {
+        let key = overrideKey(model)
+        guard !autoDisabledKeys.contains(key) else { return }
+        autoDisabledKeys.insert(key)
+        defaults.set(Array(autoDisabledKeys), forKey: autoDisabledKey)
+    }
+
+    /// 자동 정리된 모델 수 — 갱신 로그·설정 하단 리포트에 표시 (v0.2.0)
+    var autoDisabledCount: Int { autoDisabledKeys.count }
 
     /// 피커 노출용 — 비활성 모델은 목록에서 완전 숨김 (v1.7 D4)
     func visibleModels(for provider: Provider) -> [AIModel] {
@@ -282,11 +306,12 @@ final class ModelCatalog: ObservableObject {
             let reason = r.errorMessage ?? ""
             return reason.isEmpty ? "\(r.provider.rawValue)" : "\(r.provider.rawValue)(\(reason))"
         }
-        DebugLogger.shared.info(
-            "MODEL",
-            "모델 목록 갱신 완료 — 추가 \(report.addedTotal)개 / 제거 \(report.removedTotal)개"
-                + (failedLog.isEmpty ? "" : " / 실패: \(failedLog.joined(separator: ", "))")
-        )
+        var logLine = "모델 목록 갱신 완료 — 추가 \(report.addedTotal)개 / 제거 \(report.removedTotal)개"
+            + (failedLog.isEmpty ? "" : " / 실패: \(failedLog.joined(separator: ", "))")
+        if !autoDisabledKeys.isEmpty {
+            logLine += " / 자동 제외(410/404) 모델 \(autoDisabledKeys.count)개 유지"
+        }
+        DebugLogger.shared.info("MODEL", logLine)
         return report
     }
 

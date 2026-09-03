@@ -98,4 +98,44 @@ final class UnavailableModelTests_V020: XCTestCase {
         XCTAssertFalse(disabled)
         XCTAssertTrue(catalog.isEnabled(model))
     }
+
+    // MARK: - 자동 정리 기록(autoDisabled)
+
+    func testAutoDisabledRecordedOn410() {
+        let catalog = ModelCatalog.shared
+        let model = AIModel(id: "v020-auto-410", provider: .nvidia, displayName: "자동정리 410")
+        let key = "\(Provider.nvidia.rawValue):v020-auto-410"
+        catalog.setEnabled(model, true)
+        defer { catalog.setEnabled(model, true) }
+
+        _ = catalog.disableUnavailableModel(error: AppError.serverError(410, "gone"), model: model)
+
+        XCTAssertTrue(catalog.autoDisabledKeys.contains(key))
+        XCTAssertEqual(catalog.autoDisabledCount, catalog.autoDisabledKeys.count)
+    }
+
+    func testAutoDisabledNotRecordedOnManualDisable() {
+        let catalog = ModelCatalog.shared
+        let model = AIModel(id: "v020-manual-off", provider: .gemini, displayName: "수동 해제")
+        let key = "\(Provider.gemini.rawValue):v020-manual-off"
+        catalog.setEnabled(model, true)
+        defer { catalog.setEnabled(model, true) }
+
+        catalog.setEnabled(model, false) // 수동 해제 — 자동 정리 아님
+
+        XCTAssertFalse(catalog.autoDisabledKeys.contains(key))
+    }
+
+    func testReEnablingClearsAutoDisabled() {
+        let catalog = ModelCatalog.shared
+        let model = AIModel(id: "v020-reenable", provider: .groq, displayName: "재활성화")
+        let key = "\(Provider.groq.rawValue):v020-reenable"
+        defer { catalog.setEnabled(model, true) }
+
+        _ = catalog.disableUnavailableModel(error: AppError.serverError(410, "gone"), model: model)
+        XCTAssertTrue(catalog.autoDisabledKeys.contains(key))
+
+        catalog.setEnabled(model, true)
+        XCTAssertFalse(catalog.autoDisabledKeys.contains(key))
+    }
 }

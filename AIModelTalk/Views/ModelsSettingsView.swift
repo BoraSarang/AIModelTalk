@@ -241,7 +241,12 @@ struct ModelsSettingsView: View {
         defer { isRefreshing = false }
         let report = await catalog.refresh()
         hasRefreshError = !report.failedProviderNames.isEmpty
-        refreshResult = CatalogRefreshReport.summaryText(report.results)
+        var text = CatalogRefreshReport.summaryText(report.results)
+        if catalog.autoDisabledCount > 0 {
+            text += text.isEmpty ? "" : " / "
+            text += "자동 제외(410/404) 모델 \(catalog.autoDisabledCount)개 유지"
+        }
+        refreshResult = text
     }
 }
 
