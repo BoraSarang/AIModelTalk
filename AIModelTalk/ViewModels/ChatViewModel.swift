@@ -48,6 +48,13 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var tokenTick = 0
     /// 검색 결과 이동 시 임시 하이라이트 대상 메시지 (v2.1 T-97)
     @Published var highlightedMessageID: UUID?
+    // MARK: - 병렬 모델 비교 (T-201) — 대화 컨텍스트를 여러 모델에 동시 발송
+    /// 비교 실행 중 여부 — true면 메시지 리스트 하단에 비교 결과 그리드 오버레이
+    @Published var isComparing = false
+    /// 비교 대상 모델 ID 집합 (대화 나란히 비교 선택)
+    @Published var selectedCompareModelIDs: Set<String> = []
+    /// 비교 실행 캐릭터별 샘플링 온도 (T-202) — nil이면 공급자 기본값
+    @Published var compareTemperature: Double? = nil
     /// 빠른 대화(패널) 세션 — 미저장 draft는 목록에서 숨겨지고 패널을 닫으면 폐기됨 (런타임 전용, SwiftData 미저장)
     @Published private(set) var quickSessionID: UUID?
     @Published private(set) var isQuickSessionDraft = false
@@ -67,6 +74,8 @@ final class ChatViewModel: ObservableObject {
     private let context: ModelContext
     /// 세션별 병렬 스트리밍 수명주기 관리 (v3.0 T-002)
     private let streamManager = StreamManager.shared
+    /// 병렬 모델 비교 서비스 (T-201) — 대화 컨텍스트 공유 비교 실행
+    private let comparisonService = ComparisonService.shared
     /// 현재 메인 창이 스트리밍 중인 세션 ID (스트리밍 중지 대상 추적)
     private var mainStreamingSessionID: UUID?
 
@@ -1287,6 +1296,78 @@ final class ChatViewModel: ObservableObject {
                 mainStreamingSessionID = nil
             }
         }
+    }
+
+    // MARK: - 병렬 모델 비교 (T-201)
+
+    /// 현재 대화 컨텍스트를 여러 모델에 나란히 발송한다.
+    /// 대화 이력(effectiveHistory)을 통일 컨텍스트로 사용해 모든 래인이 같은 맥락에서 응답한다.
+    /// 결과는 ComparisonService.results에 채워져 비교 오버레이가 렌더링한다.
+    func runComparison(in sessionID: UUID) {
+        guard !isComparing, !isLoading,
+              let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+
+        let models = ModelCatalog.shared.models.filter { selectedCompareModelIDs.contains($0.id) }
+        guard !models.isEmpty else {
+            DebugLogger.shared.warn("COMPARE", "[E-MAC-VALID-1004] 비교 실행 차단 — 선택된 모델 없음")
+            return
+        }
+
+        DebugLogger.shared.info("COMPARE", "[FEATURE] 대화 병렬 비교 시작: 모델 \(models.count)개, 세션 이력 \(sessions[index].messages.count)개")
+        let context = Self.effectiveHistory(from: sessions[index].messages)
+        let systemPrompt = buildSystemPrompt()
+
+        isComparing = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.comparisonService.run(
+                context: context,
+                systemPrompt: systemPrompt,
+                temperature: self.compareTemperature,
+                models: models)
+            self.isComparing = false
+        }
+    }
+
+    /// 비교 종료 — 선택한 래인의 응답을 이 세션의 어시스턴트 답변으로 확정해 대화에 남긴다.
+    /// "이 답변으로 계속" 버튼에서 호출. 비교는 임시 오버레이로, 선택 결과만 히스토리에 반영된다.
+    func adoptCompareLane(index: Int, in sessionID: UUID) {
+        guard comparisonService.results.indices.contains(index),
+              let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        let lane = comparisonService.results[index]
+        guard lane.error == nil else { return }
+
+        mutateMessages(of: sessionID) { $0.append(Self.assistantMessage(fromLane: lane)) }
+        sessions[sessionIndex].updatedAt = Date()
+        saveSession(sessions[sessionIndex])
+        DebugLogger.shared.info("COMPARE", "[FEATURE] 비교 래인 채택됨: \(lane.model.displayName), \(lane.text.count)자")
+
+        // 비교 모델 재선택을 쉽게 — 세션 기본 모델 유지는 유지, 비교는 종료
+        isComparing = false
+    }
+
+    /// 비교 래인을 세션에 확정될 어시스턴트 메시지로 변환 (순수 — T-201 테스트 대상)
+    nonisolated static func assistantMessage(fromLane lane: ComparisonResult) -> ChatMessage {
+        ChatMessage(
+            role: .assistant,
+            content: lane.text,
+            provider: lane.model.provider,
+            modelID: lane.model.id,
+            isStreaming: false,
+            promptTokens: lane.promptTokens,
+            completionTokens: lane.completionTokens
+        )
+    }
+
+    /// 비교 대상 모델 목록 (순서 보장)
+    func selectedCompareModels() -> [AIModel] {
+        ModelCatalog.shared.models.filter { selectedCompareModelIDs.contains($0.id) }
+    }
+
+    /// 비교 실행 후 초기화 — 비교 오버레이 종료
+    func cancelComparison() {
+        isComparing = false
+        comparisonService.stopAll()
     }
 
     // MARK: - 스트리밍 중지

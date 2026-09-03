@@ -15,6 +15,10 @@ struct ChatView: View {
             if updateService.hasUpdate, let release = updateService.latestRelease {
                 updateBanner(release)
             }
+            // 병렬 모델 비교 오버레이 (T-201) — 비교 실행 중 메시지 리스트 위에 그리드 표시
+            if viewModel.isComparing {
+                CompareOverlayView(viewModel: viewModel)
+            }
             MessageListView(viewModel: viewModel)
             Divider()
             ChatInputBarView(viewModel: viewModel)

@@ -127,11 +127,13 @@ final class ComparisonService: ObservableObject {
     @Published var judgeSummary: String = ""
     @Published var isJudging: Bool = false
     /// 루브릭 채점 — 파싱 성공 시 채워지고, 실패 시 judgeSummary 텍스트로 폴백 (v1.9 T-87)
-    @Published var reportScores: [JudgeScore] = []
+@Published var reportScores: [JudgeScore] = []
     @Published var winnerName: String? = nil
+    /// 비교 실행 시 지정할 캐릭터별 샘플링 온도 (T-202) — nil이면 공급자 기본값
+    var temperature: Double? = nil
 
     func run(models: [AIModel]) async {
-        guard !question.trimmingCharacters(in: .whitespaces).isEmpty, !models.isEmpty else { return }
+        guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !models.isEmpty else { return }
 
         results = models.map { ComparisonResult(model: $0, isStreaming: true) }
         judgeSummary = ""
@@ -153,7 +155,54 @@ final class ComparisonService: ObservableObject {
         }
     }
 
+    /// 대화 컨텍스트 기반 병렬 비교 (T-201) — 기존 단일 질문 비교와 달리
+    /// `context`(대화 이력)를 모든 래인에 동일 적용해 나란히 스트리밍한다.
+    /// 채점·승자 판정은 기존 runJudge 논리를 컨텍스트 버전으로 재사용한다.
+    func run(context: [ChatMessage], systemPrompt: String?, temperature: Double?, models: [AIModel]) async {
+        guard !models.isEmpty else { return }
+
+        results = models.map { ComparisonResult(model: $0, isStreaming: true) }
+        judgeSummary = ""
+        reportScores = []
+        winnerName = nil
+        isRunning = true
+        defer { isRunning = false }
+
+        let ctx = context
+        let sys = systemPrompt
+        let temp = temperature
+
+        await withTaskGroup(of: Void.self) { group in
+            for idx in results.indices {
+                group.addTask { [weak self] in
+                    await self?.streamOne(index: idx, context: ctx, systemPrompt: sys, temperature: temp)
+                }
+            }
+        }
+
+        // 판정 프롬프트가 사용할 '질문' — 대화 컨텍스트의 마지막 사용자 메시지로 보정 (T-201)
+        if let lastUser = ctx.last(where: { $0.role == .user }) {
+            question = lastUser.content
+        }
+        if AppSettings.shared.showJudgeSummary {
+            await runJudge()
+        }
+    }
+
+    /// 비교 실행 중 여부 — true면 메시지 리스트 하단에 비교 결과 그리드 오버레이
+    func stopAll() {
+        isRunning = false
+        for idx in results.indices {
+            results[idx].isStreaming = false
+        }
+        DebugLogger.shared.info("COMPARE", "[FEATURE] 비교 중단: \(results.count)개 래인 종료")
+    }
+
     private func streamOne(index: Int) async {
+        await streamOne(index: index, context: [ChatMessage(role: .user, content: question)], systemPrompt: nil, temperature: temperature)
+    }
+
+    private func streamOne(index: Int, context: [ChatMessage], systemPrompt: String?, temperature: Double?) async {
         let model = results[index].model
         guard let client = try? AIClientFactory.client(provider: model.provider, modelID: model.id) else {
             results[index].isStreaming = false
@@ -161,11 +210,11 @@ final class ComparisonService: ObservableObject {
             return
         }
 
-        let messages = [ChatMessage(role: .user, content: question)]
+        let messages = context
         let start = Date()
         do {
             let capture = UsageCapture()
-            let stream = client.stream(messages: messages, systemPrompt: nil) { prompt, completion in
+            let stream = client.stream(messages: messages, systemPrompt: systemPrompt, temperature: temperature) { prompt, completion in
                 capture.promptTokens = prompt
                 capture.completionTokens = completion
             }

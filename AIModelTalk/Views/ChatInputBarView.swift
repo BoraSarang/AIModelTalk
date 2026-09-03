@@ -89,6 +89,8 @@ struct ChatInputBarView: View {
                         .help(viewModel.webSearchForNextSend ? "웹 검색 켜짐 — 이번 전송에 적용" : "이번 전송에 웹 검색 사용")
                     }
                     MCPToolSelectorView()
+                    // 병렬 모델 비교 (T-201) — 같은 대화 컨텍스트로 여러 모델 비교
+                    CompareModelPickerButton(viewModel: viewModel)
                 }
                 Spacer()
                 tokenMeter
