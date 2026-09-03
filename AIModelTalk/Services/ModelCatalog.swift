@@ -72,10 +72,18 @@ struct CatalogRefreshReport {
 final class ModelCatalog: ObservableObject {
     static let shared = ModelCatalog()
 
-    @Published var models: [AIModel] = []
+    @Published var models: [AIModel] = [] {
+        didSet {
+            // refresh() 배치 중엔 연쇄 재구축을 피하고 마지막에 1회 확정 (v0.2.2)
+            guard !isBatchUpdating else { return }
+            rebuildIndexes()
+        }
+    }
 
-    /// 모델 사용 플래그 ("공급자:id" → 사용 여부). 미등록 키는 true 취급 (v1.7 T-53)
+    /// 모델 사용 플래그 ("공급자:id" → 사용 여부). 미등록 키는 기본 해제 — Apple Intelligence만 예외 (v0.2.2)
     @Published var enabledOverrides: [String: Bool] = [:]
+    /// refresh() 중 models 변이를 배치로 모으기 위한 플래그 — true 동안 rebuildIndexes/saveCustomModels를 지연
+    private var isBatchUpdating = false
 
     private let userDefaultsKey = "customModels"
     private let overridesKey = "modelEnabledOverrides"
@@ -133,10 +141,15 @@ final class ModelCatalog: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        // 로딩 전체를 배치로 묶는다 — 커스텀 모델 수백 개를 개별 append할 때마다
+        // rebuildIndexes()(UserDefaults JSON + 전체 모델 순회)가 O(N²)로 폭주하는 것을 방지. (v0.2.3)
+        isBatchUpdating = true
         models = Self.defaultModels
         loadCustomModels()
         loadEnabledOverrides()
         autoDisabledKeys = Set((defaults.array(forKey: autoDisabledKey) as? [String]) ?? [])
+        isBatchUpdating = false
+        rebuildIndexes() // 배치 종료 후 로드된 전체 models 기준 소속 인덱스 1회 확정 (enabled는 조회 시점에 반영)
     }
 
     // MARK: - 모델 추가/삭제
@@ -161,13 +174,140 @@ final class ModelCatalog: ObservableObject {
 
     // MARK: - 엔트리 단위 조회 (v1.9 T-85 — 내장 공급자 + 커스텀 엔드포인트)
 
+    // ── 성능 인덱스 캐시 (v0.2.1) ──
+    // 모델이 수백~천여 개일 때 엔트리 필터를 매 body 평가마다 O(n)으로 반복 재계산하면
+    // 피커·설정 목록이 멈추는 원인이 된다. 아래 사전으로 미리 인덱싱해 O(1) 조회로 전환한다.
+    // rebuildIndexes()는 models가 바뀌는 지점에서 호출한다 (enabled는 조회 시점에 isEnabled로 반영).
+
+    /// 엔트리 id → (belongs) 소속 모델 (fallback 결합 제외, 고정 소속만)
+    private var modelsByEntryID: [String: [AIModel]] = [:]
+    /// 엔트리 id → 활성화(enabled) 모델만 — 화면이 활성 목록만 읽도록 미리 인덱싱 (v0.2.3)
+    /// 조회 시점에 models 전체를 filter(isEnabled)로 순회하지 않고 상수 시간에 활성만 반환한다.
+    private var enabledByEntryID: [String: [AIModel]] = [:]
+    /// 엔드포인트 미지정 구형 커스텀 모델 — 첫 엔드포인트(fallback)에 소속되는 그룹 (T-85 구형 호환)
+    private var legacyCustomModels: [AIModel] = []
+    /// 구형 커스텀 중 활성화 모델만 — enabledByEntryID와 동일하게 미리 필터 (v0.2.3)
+    private var enabledLegacyCustomModels: [AIModel] = []
+    /// rebuild 시점에 저장소에 존재하는 엔드포인트 ID 집합 — indexed() O(1) 판별용
+    private var indexedEndpointIDs: Set<UUID> = []
+
+    /// 내부 인덱스 재구축 — models 변경 시에만 호출 (enabled는 소속 분류와 무관, 조회 시점에 반영)
+    private func rebuildIndexes() {
+        var byEntry: [String: [AIModel]] = [:]
+        var enabledByEntry: [String: [AIModel]] = [:]
+        var legacy: [AIModel] = []
+        var enabledLegacy: [AIModel] = []
+
+        // 내장 공급자(비커스텀) + 커스텀 엔드포인트에 정확 소속되는 모델을 키별로 분류
+        var endpointIDs: Set<UUID> = []
+        let snapshot = allEntriesSnapshot()
+        for entry in snapshot {
+            if let eid = entry.endpoint?.id { endpointIDs.insert(eid) }
+            var list: [AIModel] = []
+            for model in models where model.belongs(to: entry, fallbackFirstEndpointID: nil) {
+                list.append(model)
+            }
+            byEntry[entry.id] = list
+            enabledByEntry[entry.id] = list.filter { isEnabled($0) }
+        }
+        // 엔드포인트 미지정 구형 커스텀 모델 — 소속이 어디에도 없던 .custom
+        for model in models where model.provider == .custom && model.customEndpointID == nil {
+            legacy.append(model)
+            if isEnabled(model) { enabledLegacy.append(model) }
+        }
+
+        modelsByEntryID = byEntry
+        enabledByEntryID = enabledByEntry
+        legacyCustomModels = legacy
+        enabledLegacyCustomModels = enabledLegacy
+        indexedEndpointIDs = endpointIDs
+    }
+
+    /// 활성(enabled) 토글 변경 시 활성 인덱스만 재구성 — 모델 소속(modelsByEntryID)은 변하지 않으므로
+    /// 전체 rebuildIndexes를 돌리지 않아도 된다 (v0.2.3). 조회 시점의 models 전체 순회를 제거한다.
+    private func rebuildEnabledIndexes() {
+        var enabledByEntry: [String: [AIModel]] = [:]
+        for (key, list) in modelsByEntryID {
+            enabledByEntry[key] = list.filter { isEnabled($0) }
+        }
+        enabledByEntryID = enabledByEntry
+        enabledLegacyCustomModels = legacyCustomModels.filter { isEnabled($0) }
+    }
+
+    /// 단일 모델 토글 시 활성 인덱스 증분 갱신 — 전체를 순회하지 않고 그 모델이 속한 엔트리만
+    /// 재구성한다 (v0.2.3). modelsByEntryID의 키(=엔트리 id) 기준으로 모델 소속을 찾는다.
+    private func rebuildEnabledIndexes(for model: AIModel) {
+        var touched = false
+        for (key, list) in modelsByEntryID {
+            guard let _ = list.first(where: { $0.id == model.id && $0.provider == model.provider }) else { continue }
+            enabledByEntryID[key] = list.filter { isEnabled($0) }
+            touched = true
+        }
+        // 구형 커스텀(엔드포인트 미지정) 모델이라면 legacy 인덱스도 갱신
+        if model.provider == .custom && legacyCustomModels.contains(where: { $0.id == model.id }) {
+            enabledLegacyCustomModels = legacyCustomModels.filter { isEnabled($0) }
+            touched = true
+        }
+        // 보수적 폴백 — 소속을 못 찾았거나 배치 상태면 전체 재구성
+        if !touched { rebuildEnabledIndexes() }
+    }
+
+    // 현재 엔트리 목록 — 이 카탈로그의 defaults(테스트 격리 suite 포함)에서 엔드포인트를 읽는다
+    private func allEntriesSnapshot() -> [ProviderEntry] {
+        Provider.allCases.filter { $0 != .custom }.map { ProviderEntry(provider: $0) }
+            + CustomEndpointStore(defaults: defaults).endpoints
+                .map { ProviderEntry(endpoint: $0) }
+    }
+
     /// 엔트리(내장 공급자 또는 커스텀 엔드포인트)에 속한 모델 목록
     func models(in entry: ProviderEntry, fallbackFirstEndpointID: UUID? = nil) -> [AIModel] {
-        models.filter { $0.belongs(to: entry, fallbackFirstEndpointID: fallbackFirstEndpointID) }
+        // 저장된 엔드포인트라면 인덱스 O(1) 조회, 저장되지 않은(테스트 주입 등) 엔드포인트는 기존 필터 폴백
+        guard indexed(entry) else {
+            return models.filter { $0.belongs(to: entry, fallbackFirstEndpointID: fallbackFirstEndpointID) }
+        }
+        var result = modelsByEntryID[entry.id] ?? []
+        if isFallbackCapture(entry, fallbackFirstEndpointID: fallbackFirstEndpointID) {
+            result += legacyCustomModels
+        }
+        return result
     }
 
     func visibleModels(in entry: ProviderEntry, fallbackFirstEndpointID: UUID? = nil) -> [AIModel] {
-        models(in: entry, fallbackFirstEndpointID: fallbackFirstEndpointID).filter { isEnabled($0) }
+        guard indexed(entry) else {
+            return models.filter { $0.belongs(to: entry, fallbackFirstEndpointID: fallbackFirstEndpointID) && isEnabled($0) }
+        }
+        // 활성 모델 인덱스 O(1) — 전체를 순회하지 않고 이미 활성화된 모델만 반환 (v0.2.3)
+        var result = enabledByEntryID[entry.id] ?? []
+        if isFallbackCapture(entry, fallbackFirstEndpointID: fallbackFirstEndpointID) {
+            result += enabledLegacyCustomModels
+        }
+        return result
+    }
+
+    /// 엔트리의 전체 모델 수 — 배열을 만들지 않고 인덱스 크기로 O(1) 반환 (v0.2.3)
+    /// Picker 라벨 등 카운트만 필요한 곳에서 models(in:)로 전체를 조립하지 않도록 한다.
+    func totalModelCount(in entry: ProviderEntry, fallbackFirstEndpointID: UUID? = nil) -> Int {
+        guard indexed(entry) else {
+            return models.reduce(0) { $0 + ($1.belongs(to: entry, fallbackFirstEndpointID: fallbackFirstEndpointID) ? 1 : 0) }
+        }
+        var count = modelsByEntryID[entry.id]?.count ?? 0
+        if isFallbackCapture(entry, fallbackFirstEndpointID: fallbackFirstEndpointID) {
+            count += legacyCustomModels.count
+        }
+        return count
+    }
+
+    /// 엔트리의 엔드포인트가 현재 저장소에 있어 인덱스가 해당 키를 보유하는지 여부
+    private func indexed(_ entry: ProviderEntry) -> Bool {
+        if let eid = entry.endpoint?.id { return indexedEndpointIDs.contains(eid) }
+        return true // 내장 공급자
+    }
+
+    /// 구형 커스텀(엔드포인트 미지정) 모델이 이 조회에 흡수되는지 — 첫 엔드포인트로 폴백 배정될 때만
+    private func isFallbackCapture(_ entry: ProviderEntry, fallbackFirstEndpointID: UUID?) -> Bool {
+        guard entry.endpoint != nil, let fallback = fallbackFirstEndpointID,
+              !legacyCustomModels.isEmpty else { return false }
+        return entry.endpoint?.id == fallback
     }
 
     /// 엔트리 단위 일괄 토글 — "모두 사용/해제" 버튼용
@@ -179,6 +319,7 @@ final class ModelCatalog: ObservableObject {
         }
         enabledOverrides = updated
         defaults.set(enabledOverrides, forKey: overridesKey)
+        rebuildEnabledIndexes() // 활성 인덱스 갱신 (v0.2.3)
         DebugLogger.shared.info("MODEL", "\(entry.title) 모델 전체 \(enabled ? "사용" : "해제"): \(targets.count)개")
     }
 
@@ -189,7 +330,9 @@ final class ModelCatalog: ObservableObject {
         if !Self.appleAvailable(model: model, modelAvailable: AppleIntelligenceSupport.modelAvailable) {
             return false
         }
-        return enabledOverrides[overrideKey(model)] ?? true
+        // 기본값 해제 (v0.2.2): 명시되지 않은 모델은 사용 안 함. Apple Intelligence(온디바이스)만 기본 사용.
+        if let override = enabledOverrides[overrideKey(model)] { return override }
+        return model.provider == Provider.appleIntelligence
     }
 
     /// Apple Intelligence 가용 여부 — 테스트 가능하도록 주입 파라미터 (T-209)
@@ -207,6 +350,7 @@ final class ModelCatalog: ObservableObject {
             autoDisabledKeys.remove(key)
             defaults.set(Array(autoDisabledKeys), forKey: autoDisabledKey)
         }
+        rebuildEnabledIndexes(for: model) // 토글 모델이 속한 엔트리만 활성 인덱스 갱신 (v0.2.3)
         DebugLogger.shared.info("MODEL", "모델 사용 \(enabled ? "ON" : "OFF"): \(model.id)")
     }
 
@@ -240,7 +384,8 @@ final class ModelCatalog: ObservableObject {
 
     /// 피커 노출용 — 비활성 모델은 목록에서 완전 숨김 (v1.7 D4)
     func visibleModels(for provider: Provider) -> [AIModel] {
-        models(for: provider).filter { isEnabled($0) }
+        // 활성 모델 인덱스 O(1) — 전체 순회 없이 활성만 반환 (v0.2.3)
+        enabledByEntryID[provider.rawValue] ?? []
     }
 
     /// 공급자 전체 모델 일괄 토글 (v1.7.1 T-61)
@@ -252,6 +397,7 @@ final class ModelCatalog: ObservableObject {
         }
         enabledOverrides = updated
         defaults.set(enabledOverrides, forKey: overridesKey)
+        rebuildEnabledIndexes() // 활성 인덱스 갱신 (v0.2.3)
         DebugLogger.shared.info("MODEL", "\(provider.rawValue) 모델 전체 \(enabled ? "사용" : "해제"): \(targets.count)개")
     }
 
@@ -266,6 +412,8 @@ final class ModelCatalog: ObservableObject {
 
     // MARK: - 사용자 지정 모델 저장/로드
     private func saveCustomModels() {
+        // refresh() 배치 중에는 호출부의 반복 저장을 무시하고 마지막에 1회 (v0.2.2)
+        guard !isBatchUpdating else { return }
         let customModels = models.filter { model in
             !Self.defaultModels.contains { $0.id == model.id && $0.provider == model.provider }
         }
@@ -289,6 +437,14 @@ final class ModelCatalog: ObservableObject {
     @discardableResult
     func refresh() async -> CatalogRefreshReport {
         DebugLogger.shared.info("MODEL", "모델 목록 갱신 시작")
+        // 배치 모드 — mergeRemoteModels/syncCustomEndpoint의 개별 변이마다 rebuildIndexes/saveCustomModels를
+        // 실행하지 않고, 전부 수집한 뒤 이 함수 마지막에 1회만 확정 (v0.2.2 성능)
+        isBatchUpdating = true
+        defer {
+            isBatchUpdating = false
+            rebuildIndexes()
+            saveCustomModels()
+        }
         async let openRouter = refreshOpenAICompatible(.openRouter) { item, id in
             (item["name"] as? String) ?? id
         } filter: { $0.hasSuffix(":free") }

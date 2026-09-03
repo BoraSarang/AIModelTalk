@@ -147,6 +147,7 @@ final class UnavailableModelTests_V020: XCTestCase {
         let catalog = ModelCatalog.shared
         let model = AIModel(id: "v020-reenable", provider: .groq, displayName: "재활성화")
         let key = "\(Provider.groq.rawValue):v020-reenable"
+        catalog.setEnabled(model, true) // 기본값 해제(v0.2.2) 후 활성화되어야 자동 비활성화 흐름이 성립
         defer { catalog.setEnabled(model, true) }
 
         _ = catalog.disableUnavailableModel(error: AppError.serverError(410, "gone"), model: model)

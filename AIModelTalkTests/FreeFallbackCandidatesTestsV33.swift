@@ -8,8 +8,13 @@ final class FreeFallbackCandidatesTestsV33: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        // enabledOverrides 기본값(true)으로 초기화 — 테스트 격리
-        ModelCatalog.shared.enabledOverrides = [:]
+        let catalog = ModelCatalog.shared
+        // 기본값 해제(v0.2.2) — 리셋 후 fallbackPriority 후보들을 명시 활성화해 확정 순서 상태를 만든다
+        catalog.enabledOverrides = [:]
+        for priority in ModelCatalog.fallbackPriority {
+            guard let model = catalog.model(id: priority.id, provider: priority.provider) else { continue }
+            catalog.setEnabled(model, true)
+        }
     }
 
     override func tearDown() {

@@ -1,7 +1,10 @@
 import SwiftUI
 
 struct ModelsSettingsView: View {
-    @ObservedObject private var catalog = ModelCatalog.shared
+    /// @ObservedObject를 의도적으로 쓰지 않는다 — 토글(enabledOverrides) 변화로 이 화면 전체가
+    /// 재평가되는 것을 막는다. 각 행(ModelRow)이 자기 모델만 관찰한다. (v0.2.3)
+    /// 모델 목록/카운트는 쿼리 시점에 catalog에서 직접 읽는다.
+    private let catalog = ModelCatalog.shared
 
     private let noneSelectedID = ""
 
@@ -51,7 +54,7 @@ struct ModelsSettingsView: View {
                                     .tag(noneSelectedID)
                                 ForEach(entries) { entry in
                                     let vis = catalog.visibleModels(in: entry, fallbackFirstEndpointID: fallbackFirstEndpointID).count
-                                    let tot = catalog.models(in: entry, fallbackFirstEndpointID: fallbackFirstEndpointID).count
+                                    let tot = catalog.totalModelCount(in: entry, fallbackFirstEndpointID: fallbackFirstEndpointID)
                                     Text("\(entry.title) (활성 \(vis)/\(tot))")
                                         .tag(entry.id)
                                 }
@@ -119,43 +122,42 @@ struct ModelsSettingsView: View {
                     
                     Spacer(minLength: DS.cardInset)
                     
-                    // ── 하단 카드 (스크롤) ──
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            if selectedEntryID.isEmpty && searchText.trimmingCharacters(in: .whitespaces).isEmpty {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "cpu")
-                                        .font(.title2)
-                                        .foregroundStyle(.tertiary)
-                                    Text("공급자를 선택하거나 검색하세요")
-                                        .font(.callout)
-                                        .foregroundStyle(.secondary)
-                                    Text("총 \(allModelCount)개 모델 등록됨")
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                            } else if searchedModels.isEmpty {
-                                Text("'\(searchText)'에 일치하는 모델이 없습니다")
+                    // ── 하단 카드 (스크롤, 가상화) ──
+                    // 모델이 700+개여도 필요한 행만 렌더되도록 List로 전환 (v0.2.1 성능)
+                    List {
+                        if selectedEntryID.isEmpty && searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "cpu")
+                                    .font(.title2)
+                                    .foregroundStyle(.tertiary)
+                                Text("공급자를 선택하거나 검색하세요")
+                                    .font(.callout)
                                     .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity)
-                            } else {
-                                ForEach(searchedModels) { model in
-                                    ModelRow(
-                                        model: model,
-                                        isEnabled: catalog.isEnabled(model),
-                                        onToggleEnabled: { catalog.setEnabled(model, $0) },
-                                        onDelete: { deleteModel(model) }
-                                    )
-                                    if model.id != searchedModels.last?.id {
-                                        Divider().padding(.leading, DS.space16)
-                                    }
-                                }
+                                Text("총 \(allModelCount)개 모델 등록됨")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .listRowSeparator(.hidden)
+                        } else if searchedModels.isEmpty {
+                            Text("'\(searchText)'에 일치하는 모델이 없습니다")
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                                .listRowSeparator(.hidden)
+                        } else {
+                            ForEach(searchedModels) { model in
+                                ModelRow(
+                                    model: model,
+                                    onDelete: { deleteModel(model) }
+                                )
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 0, leading: DS.space16, bottom: 0, trailing: DS.space16))
+                                .listRowBackground(Color.clear)
                             }
                         }
-                        .padding(DS.cardInset)
                     }
+                    .listStyle(.plain)
                     .frame(maxHeight: .infinity)
                     .dsCard()
                     
@@ -249,9 +251,9 @@ struct ModelsSettingsView: View {
 // MARK: - 모델 행
 
 private struct ModelRow: View {
+    /// 행마다 카탈로그를 직접 관찰해 토글이 이 행 하나만 재평가되게 분리 (v0.2.3)
+    @ObservedObject private var catalog = ModelCatalog.shared
     let model: AIModel
-    let isEnabled: Bool
-    let onToggleEnabled: (Bool) -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -288,8 +290,8 @@ private struct ModelRow: View {
                 }
 
                 Toggle("", isOn: Binding(
-                    get: { isEnabled },
-                    set: { onToggleEnabled($0) }
+                    get: { catalog.isEnabled(model) },
+                    set: { catalog.setEnabled(model, $0) }
                 ))
                 .toggleStyle(.switch)
                 .controlSize(.mini)

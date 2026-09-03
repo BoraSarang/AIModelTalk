@@ -7,6 +7,12 @@ struct ModelPickerPopover: View {
 
     @State private var modelSearchText = ""
     @State private var showModelPicker = false
+    /// 엔트리 목록 — onAppear에서 1회 로드해 body 재평가마다 UserDefaults I/O를 피한다 (v0.2.2)
+    @State private var cachedEntries: [ProviderEntry] = []
+
+    private var privateEntries: [ProviderEntry] {
+        cachedEntries.isEmpty ? ProviderEntry.currentList() : cachedEntries
+    }
 
     var body: some View {
         Button {
@@ -34,31 +40,33 @@ struct ModelPickerPopover: View {
     }
 
     private var pickerContent: some View {
-        VStack(spacing: 0) {
+        let entries = privateEntries
+        let fallbackID = entries.compactMap(\.endpoint).first?.id
+        let query = modelSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return VStack(spacing: 0) {
             searchField
             Divider()
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    if filteredModels().isEmpty && !modelSearchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    let visibleEntries = entries.filter { entry in
+                        !(entry.provider == .appleIntelligence && !AppleIntelligenceSupport.modelAvailable)
+                    }
+                    let anyMatch = visibleEntries.contains { entry in
+                        !enabledModels(in: entry, fallbackID: fallbackID, query: query).isEmpty
+                    }
+                    if !anyMatch && !modelSearchText.trimmingCharacters(in: .whitespaces).isEmpty {
                         Text("'\(modelSearchText)'에 일치하는 모델이 없습니다")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(.top, 16)
                     } else {
                         // 내장 공급자 + 커스텀 엔드포인트별 섹션 (v1.9 T-85)
-                        let entries = ProviderEntry.currentList()
-                        let fallbackID = entries.compactMap(\.endpoint).first?.id
-                        ForEach(entries) { entry in
-                            // 미지원 환경의 Apple Intelligence 섹션 숨김 (v2.1 T-102)
-                            if entry.provider == .appleIntelligence && !AppleIntelligenceSupport.modelAvailable {
-                                EmptyView()
-                            } else {
-                                let providerModels = ModelCatalog.freeFirst(filteredModels().filter { $0.belongs(to: entry, fallbackFirstEndpointID: fallbackID) })
-                                if !providerModels.isEmpty {
-                                    sectionHeader(entry.title)
-                                    ForEach(providerModels) { model in
-                                        popoverRow(model)
-                                    }
+                        ForEach(visibleEntries) { entry in
+                            let providerModels = enabledModels(in: entry, fallbackID: fallbackID, query: query)
+                            if !providerModels.isEmpty {
+                                sectionHeader(entry.title)
+                                ForEach(providerModels) { model in
+                                    popoverRow(model)
                                 }
                             }
                         }
@@ -68,6 +76,23 @@ struct ModelPickerPopover: View {
         }
         .frame(width: 300, height: 320)
         .background(Color(nsColor: .controlBackgroundColor))
+        .onAppear {
+            if cachedEntries.isEmpty {
+                cachedEntries = ProviderEntry.currentList()
+            }
+        }
+    }
+
+    /// 활성화(enabled)된 모델만 엔트리 단위로 조회 — modelsByEntryID O(1) 인덱스 재사용 + 무료 우선 (v0.2.2)
+    private func enabledModels(in entry: ProviderEntry, fallbackID: UUID?, query: String) -> [AIModel] {
+        let catalog = ModelCatalog.shared
+        let visible = catalog.visibleModels(in: entry, fallbackFirstEndpointID: fallbackID)
+        let filtered = query.isEmpty ? visible : visible.filter {
+            $0.displayName.lowercased().contains(query) ||
+            $0.id.lowercased().contains(query) ||
+            $0.provider.rawValue.lowercased().contains(query)
+        }
+        return ModelCatalog.freeFirst(filtered)
     }
 
     /// 스킬 팝오버와 동일한 🔍아이콘 검색 박스 형태 (v3.7 T-165)
@@ -141,16 +166,5 @@ struct ModelPickerPopover: View {
             .background(isSel ? selColor.opacity(0.15) : Color.clear)
         }
         .buttonStyle(.plain)
-    }
-
-    private func filteredModels() -> [AIModel] {
-        let all = ModelCatalog.shared.models.filter { ModelCatalog.shared.isEnabled($0) }
-        let query = modelSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return all }
-        return all.filter {
-            $0.displayName.lowercased().contains(query) ||
-            $0.id.lowercased().contains(query) ||
-            $0.provider.rawValue.lowercased().contains(query)
-        }
     }
 }
