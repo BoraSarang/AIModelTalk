@@ -5,10 +5,13 @@ import UniformTypeIdentifiers
 
 struct ChatInputBarView: View {
     @ObservedObject var viewModel: ChatViewModel
+    @ObservedObject private var settings = AppSettings.shared
 
     @State private var keyMonitor: Any?
     @State private var showFileImporter = false
     @State private var showTemplatePopover = false
+    @State private var showSystemPrompt = false
+    @State private var showCompare = false
 
     var body: some View {
         VStack(spacing: 8) {
@@ -49,65 +52,76 @@ struct ChatInputBarView: View {
                 .background(RoundedRectangle(cornerRadius: DS.radiusBubble).fill(Color(nsColor: .controlBackgroundColor)))
                 .overlay(RoundedRectangle(cornerRadius: DS.radiusBubble).strokeBorder(Color(nsColor: .separatorColor)))
 
+            // 주 라인 — 자주 쓰는 것만 (모델·스킬·첨부·웹) + ⋯ 더보기
             HStack(alignment: .center, spacing: 12) {
-                HStack(spacing: 12) {
+                HStack(spacing: 8) {
                     ModelPickerPopover(viewModel: viewModel)
                     SkillPickerPopover(viewModel: viewModel)
-                    SystemPromptPopover()
-                    // 프롬프트 템플릿 (T-208) — 저장한 지시문 삽입
-                    Button {
-                        showTemplatePopover.toggle()
-                    } label: {
-                        Image(systemName: "text.book.closed")
-                            .font(.system(size: 14))
-                            .foregroundStyle(showTemplatePopover ? Color.accentColor : Color.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("프롬프트 템플릿 삽입 (⌘⇧T)")
-                    .keyboardShortcut("t", modifiers: [.command, .shift])
-                    .popover(isPresented: $showTemplatePopover, arrowEdge: .bottom) {
-                        PromptTemplatePopoverView(viewModel: viewModel) {
-                            showTemplatePopover = false
+                    // 통합 첨부 — 파일 선택(클립보드는 Cmd+V 자동 판별)
+                    Menu {
+                        Button {
+                            showFileImporter = true
+                        } label: {
+                            Label("파일 선택…", systemImage: "photo.on.rectangle")
                         }
-                    }
-                    // 이미지 첨부 버튼 (파일 선택)
-                    Button {
-                        showFileImporter = true
                     } label: {
-                        Image(systemName: "photo.badge.plus")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 3) {
+                            Image(systemName: "photo.badge.plus")
+                                .font(.system(size: 13))
+                            Text("첨부")
+                                .font(.caption)
+                        }
+                        .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .help("이미지 첨부 (최대 \(ChatViewModel.maxAttachments)개)")
-                    // 클립보드 이미지 붙여넣기
-                    Button {
-                        pasteImageFromClipboard()
-                    } label: {
-                        Image(systemName: "doc.on.clipboard")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("클립보드의 이미지 붙여넣기 (⌘⇧V)")
-                    .keyboardShortcut("v", modifiers: [.command, .shift])
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("이미지 첨부 (최대 \(ChatViewModel.maxAttachments)개) — 붙여넣기(⌘V)로도 첨부")
                     // 웹 검색 토글 (v1.8 T-72)
                     if AppSettings.shared.webSearchEnabled {
                         Button {
                             viewModel.webSearchForNextSend.toggle()
                         } label: {
-                            Image(systemName: viewModel.webSearchForNextSend ? "globe" : "globe")
-                                .font(.system(size: 14))
-                                .foregroundStyle(viewModel.webSearchForNextSend ? Color.accentColor : Color.secondary)
-                                .background(viewModel.webSearchForNextSend ? Color.accentColor.opacity(0.15) : .clear)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                            HStack(spacing: 3) {
+                                Image(systemName: "globe")
+                                    .font(.system(size: 13))
+                                Text("웹")
+                                    .font(.caption)
+                            }
+                            .foregroundStyle(viewModel.webSearchForNextSend ? Color.accentColor : Color.secondary)
+                            .padding(.horizontal, 4)
+                            .background(viewModel.webSearchForNextSend ? Color.accentColor.opacity(0.15) : .clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
                         }
                         .buttonStyle(.plain)
                         .help(viewModel.webSearchForNextSend ? "웹 검색 켜짐 — 이번 전송에 적용" : "이번 전송에 웹 검색 사용")
                     }
-                    MCPToolSelectorView()
-                    // 병렬 모델 비교 (T-201) — 같은 대화 컨텍스트로 여러 모델 비교
-                    CompareModelPickerButton(viewModel: viewModel)
+                    // ⋯ 더보기 — 덜 쓰는 기능 (아이콘+라벨 컨텍스트 메뉴)
+                    Menu {
+                        Button {
+                            showCompare = true
+                        } label: {
+                            Label("병렬 비교", systemImage: "rectangle.split.2x1")
+                        }
+                        Button {
+                            showSystemPrompt = true
+                        } label: {
+                            Label("시스템 프롬프트", systemImage: "text.badge.plus")
+                        }
+                        Button {
+                            showTemplatePopover = true
+                        } label: {
+                            Label("프롬프트 템플릿 (⌘⇧T)", systemImage: "text.book.closed")
+                        }
+                        Divider()
+                        Toggle("MCP 도구 사용", isOn: $settings.mcpToolsEnabled)
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("더 보기 — 비교·시스템 프롬프트·템플릿·MCP")
                 }
                 Spacer()
                 tokenMeter
@@ -155,6 +169,27 @@ struct ChatInputBarView: View {
             keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 // 패널 대상 Return은 패널 모니터가 처리 — 메인 이중 전송 방지 (T-44)
                 if event.window is QuickPanel { return event }
+                // 붙여넣기 통합 (T-207 v0.2.1) — 클립보드에 이미지가 있으면 첨부, 없으면 텍스트(네이티브)로 통과
+                if event.modifierFlags.contains(.command)
+                    && !event.modifierFlags.contains(.shift)
+                    && !event.modifierFlags.contains(.control)
+                    && !event.modifierFlags.contains(.option)
+                    && event.charactersIgnoringModifiers?.lowercased() == "v" {
+                    if clipboardHasImage() {
+                        pasteImageFromClipboard()
+                        return nil // 이미지 첨부로 소비
+                    }
+                    return event // 이미지 없음 → 기본 텍스트 붙여넣기
+                }
+                // 프롬프트 템플릿 (⌘⇧T) — "⋯" 메뉴 단축키 유지
+                if event.modifierFlags.contains(.command)
+                    && event.modifierFlags.contains(.shift)
+                    && !event.modifierFlags.contains(.control)
+                    && !event.modifierFlags.contains(.option)
+                    && event.charactersIgnoringModifiers?.lowercased() == "t" {
+                    showTemplatePopover = true
+                    return nil
+                }
                 if event.keyCode == 36 && !event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control) && !event.modifierFlags.contains(.option) {
                     if event.modifierFlags.contains(.shift) {
                         // Shift+Return: 줄바꿈 허용 (기본 동작)
@@ -175,6 +210,39 @@ struct ChatInputBarView: View {
                 keyMonitor = nil
             }
         }
+        // "⋯" 메뉴에서 연 popover들 — 본체 VStack에 앵커 (v0.2.1)
+        .popover(isPresented: $showTemplatePopover, arrowEdge: .bottom) {
+            PromptTemplatePopoverView(viewModel: viewModel) {
+                showTemplatePopover = false
+            }
+        }
+        .popover(isPresented: $showSystemPrompt, arrowEdge: .bottom) {
+            systemPromptEditor
+        }
+        .popover(isPresented: $showCompare, arrowEdge: .bottom) {
+            CompareModelPickerButton(viewModel: viewModel, isPresented: $showCompare).compareSelector
+        }
+    }
+
+    // MARK: - 시스템 프롬프트 편집 (⋯ 메뉴 popover 콘텐츠)
+
+    private var systemPromptEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("기본 시스템 프롬프트")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            Text("이 프롬프트는 모든 새 대화의 기본 지시로 적용됩니다")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            TextEditor(text: $settings.systemPrompt)
+                .font(.system(size: 12))
+                .frame(width: 320, height: 120)
+                .scrollContentBackground(.hidden)
+                .padding(4)
+                .background(RoundedRectangle(cornerRadius: DS.radiusControl).fill(Color(nsColor: .textBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: DS.radiusControl).strokeBorder(Color(nsColor: .separatorColor)))
+        }
+        .padding(12)
     }
 
     // MARK: - 이미지 첨부 (v1.8 T-71)
@@ -183,21 +251,27 @@ struct ChatInputBarView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(viewModel.pendingAttachments) { attachment in
+                    let thumb = 72 as CGFloat
                     ZStack(alignment: .topTrailing) {
                         if let image = NSImage(data: attachment.imageData) {
                             Image(nsImage: image)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: 56, height: 56)
+                                .frame(width: thumb, height: thumb)
                                 .clipShape(RoundedRectangle(cornerRadius: DS.radiusCard))
                                 .overlay(RoundedRectangle(cornerRadius: DS.radiusCard).strokeBorder(Color(nsColor: .separatorColor)))
                         }
+                        // 닫기 오버레이 — 항상 보이는 검은 반투명 원형 배경 + 흰 x (v0.2.1 시인성 강화)
                         Button {
                             viewModel.removeAttachment(id: attachment.id)
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 13))
-                                .foregroundStyle(.white, .black.opacity(0.65))
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 16, height: 16)
+                                .background(Circle().fill(.black.opacity(0.6)))
+                                .overlay(Circle().strokeBorder(.white.opacity(0.5), lineWidth: 0.5))
+                                .shadow(color: .black.opacity(0.3), radius: 1, x: 0, y: 1)
                         }
                         .buttonStyle(.plain)
                         .offset(x: 5, y: -5)
@@ -215,7 +289,7 @@ struct ChatInputBarView: View {
                                 .font(.system(size: 9))
                         }
                         .foregroundStyle(.secondary)
-                        .frame(width: 56, height: 56)
+                        .frame(width: 72, height: 72)
                         .background(RoundedRectangle(cornerRadius: DS.radiusCard).fill(Color(nsColor: .controlBackgroundColor)))
                         .overlay(RoundedRectangle(cornerRadius: DS.radiusCard).strokeBorder(Color(nsColor: .separatorColor), style: StrokeStyle(lineWidth: 1, dash: [4])))
                     }
@@ -241,6 +315,15 @@ struct ChatInputBarView: View {
             }
         }
         return handled
+    }
+
+    // MARK: - 붙여넣기 통합 (v0.2.1) — 클립보드 이미지 첨부/텍스트 통과
+
+    private func clipboardHasImage() -> Bool {
+        let pasteboard = NSPasteboard.general
+        return pasteboard.data(forType: .png) != nil
+            || pasteboard.data(forType: .tiff) != nil
+            || pasteboard.data(forType: NSPasteboard.PasteboardType("public.jpeg")) != nil
     }
 
     private func pasteImageFromClipboard() {
@@ -270,6 +353,10 @@ struct ChatInputBarView: View {
         let totals = SessionTokens.total(for: session?.messages ?? [])
 
         return HStack(spacing: 8) {
+            // 실측 누적 토큰은 툴팁으로 (v0.2.1 컴팩트) — 게이지 위 호버 시 표시
+            let totalsLabel = totals.isEmpty
+                ? "현재 대화 예상 토큰"
+                : "추정 \(used) · 실측 ↑\(SessionTokens.compact(totals.prompt)) ↓\(SessionTokens.compact(totals.completion))"
             Text("토큰")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -283,26 +370,16 @@ struct ChatInputBarView: View {
                 }
             }
             .frame(width: 60, height: 5)
+            .help(totalsLabel)
             Text("\(used.formatted()) / \(limit.formatted())")
                 .font(.caption2.monospaced())
                 .foregroundStyle(color)
+                .help(totalsLabel)
             if used > limit {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption2)
                     .foregroundStyle(.red)
                     .help("컨텍스트 한도를 초과했습니다. 이전 기록이 잘릴 수 있습니다.")
-            }
-            if !totals.isEmpty {
-                Divider()
-                    .frame(height: 10)
-                Label(
-                    "실측 ↑\(SessionTokens.compact(totals.prompt)) ↓\(SessionTokens.compact(totals.completion))",
-                    systemImage: "checkmark.seal"
-                )
-                .font(.caption2)
-                .monospacedDigit()
-                .foregroundStyle(Color(nsColor: .systemGray))
-                .help("API가 보고한 이 세션의 누적 토큰 (프롬프트/완료)")
             }
         }
     }

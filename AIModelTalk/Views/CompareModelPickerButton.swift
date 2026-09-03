@@ -6,10 +6,18 @@ import SwiftUI
 /// 선택한 모델들을 현재 대화 컨텍스트로 동시에 호출해 비교 오버레이를 연다.
 struct CompareModelPickerButton: View {
     @ObservedObject var viewModel: ChatViewModel
+    /// 외부(⋯ 더보기 메뉴)에서 팝오버 열림 제어 — 내부 버튼과 공유된다
+    @Binding var isPresented: Bool
+    @State private var hovered = false
+
+    init(viewModel: ChatViewModel, isPresented: Binding<Bool> = .constant(false)) {
+        self.viewModel = viewModel
+        self._isPresented = isPresented
+    }
 
     var body: some View {
         Button {
-            showPopover.toggle()
+            isPresented.toggle()
         } label: {
             Image(systemName: viewModel.isComparing ? "rectangle.split.2x1.fill" : "rectangle.split.2x1")
                 .font(.system(size: 14))
@@ -23,16 +31,13 @@ struct CompareModelPickerButton: View {
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.12)) { hovered = hovering }
         }
-        .popover(isPresented: $showPopover, arrowEdge: .bottom) {
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             compareSelector
         }
         .help("병렬 모델 비교 — 같은 대화를 여러 모델에 동시 전송")
     }
 
-    @State private var showPopover = false
-    @State private var hovered = false
-
-    private var compareSelector: some View {
+    var compareSelector: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("모델별 나란히 비교")
                 .font(.headline)
@@ -182,7 +187,7 @@ struct CompareModelPickerButton: View {
     private func startCompare() {
         guard let sessionID = viewModel.currentSessionID else { return }
         viewModel.runComparison(in: sessionID)
-        showPopover = false
+        isPresented = false
     }
 
     private func toggle(_ model: AIModel) {
