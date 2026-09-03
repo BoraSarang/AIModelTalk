@@ -185,7 +185,17 @@ final class ModelCatalog: ObservableObject {
     // MARK: - 모델 사용 플래그 (v1.7 T-53)
 
     func isEnabled(_ model: AIModel) -> Bool {
-        enabledOverrides[overrideKey(model)] ?? true
+        // Apple Intelligence는 시스템 모델이 실제 가용할 때만 사용 가능 (T-209)
+        if !Self.appleAvailable(model: model, modelAvailable: AppleIntelligenceSupport.modelAvailable) {
+            return false
+        }
+        return enabledOverrides[overrideKey(model)] ?? true
+    }
+
+    /// Apple Intelligence 가용 여부 — 테스트 가능하도록 주입 파라미터 (T-209)
+    nonisolated static func appleAvailable(model: AIModel, modelAvailable: Bool) -> Bool {
+        if model.provider == .appleIntelligence { return modelAvailable }
+        return true
     }
 
     func setEnabled(_ model: AIModel, _ enabled: Bool) {

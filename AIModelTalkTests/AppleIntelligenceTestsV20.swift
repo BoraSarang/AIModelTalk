@@ -64,4 +64,22 @@ final class AppleIntelligenceTestsV20: XCTestCase {
         XCTAssertEqual(dropped, 0, "예산 내선 아무것도 제외하지 않음")
         XCTAssertTrue(prompt.contains("짧은 질문") && prompt.contains("짧은 답변"))
     }
+
+    // MARK: T-209 — Apple Intelligence 가용 시에만 비교·Eval 모델 목록에 노출
+
+    func testAppleAvailableTrueWhenModelPublished() {
+        let apple = AIModel(id: "apple-intelligence", provider: .appleIntelligence, displayName: "Apple Intelligence")
+        XCTAssertTrue(ModelCatalog.appleAvailable(model: apple, modelAvailable: true))
+    }
+
+    func testAppleAvailableFalseWhenModelUnpublished() {
+        let apple = AIModel(id: "apple-intelligence", provider: .appleIntelligence, displayName: "Apple Intelligence")
+        XCTAssertFalse(ModelCatalog.appleAvailable(model: apple, modelAvailable: false))
+    }
+
+    func testAppleAvailableDoesNotAffectOtherProviders() {
+        let gpt = AIModel(id: "gpt", provider: .openRouter, displayName: "GPT")
+        XCTAssertTrue(ModelCatalog.appleAvailable(model: gpt, modelAvailable: true))
+        XCTAssertTrue(ModelCatalog.appleAvailable(model: gpt, modelAvailable: false), "비 Apple 모델은 시스템 모델 상태와 무관")
+    }
 }
