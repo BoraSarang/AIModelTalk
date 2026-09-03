@@ -32,6 +32,12 @@
 - **자동 정리(410/404) 모델을 별도 기록**: `autoDisabledKeys`(UserDefaults `autoDisabledModelKeys`) 영구 저장 — 수동 해제와 구분. `disableUnavailableModel` 시 기록, 사용자가 재활성화(`setEnabled(true)`)하면 기록 해제
 - **갱신 로그/설정에 정리 상태 표시**: 목록 갱신 완료 로그와 설정 하단 리포트에 "자동 제외(410/404) 모델 n개 유지" 병기
 
+### 추가 기능 — 오류 안내 메시지 상태코드별 명확화 (커밋 a3e8173)
+- `AppError.errorDescription`을 상태코드별로 분화해 "서버 오류" 같은 모호한 표현 제거:
+  400 요청형식 / 401·403 인증 / 402 잔액부족 / 404 모델없음 / 410 EOL / 429 한도 / 5xx 공급자서버 각각 사용자 언어로 안내
+- `ComparisonService.failureHint` 제거 → 원인이 `errorDescription`에 통합되어 비교·채팅 래인에서 중복 이어붙임("X — Y") 정리
+- `error_message_ko.json` E-MAC-API-1001 문구 동기화
+
 ### 검증
 - macOS build_and_run 성공 · 단위 테스트 265건 통과(신규 UnavailableModelTests_V020 6건·ParallelComparisonTests_T201 3건 포함)
 
