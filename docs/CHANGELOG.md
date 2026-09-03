@@ -2,6 +2,30 @@
 
 이 프로젝트는 **v0.1.0** 초기 릴리스이며, 여기서부터 신규 출발합니다. (이전 이력 없음)
 
+## [0.2.2] — 2026-09-03 (성능 — 모델 팝업·설정 멈춤 근본 해결) · `d363630`
+
+> 모델 771+개로 피커/설정이 수 초 멈추던 문제의 근본 원인 세 가지를 해결.
+
+### 성능
+- **init O(N²) 제거**: `ModelCatalog.init`에서 `loadCustomModels()`를 `isBatchUpdating` 배치로 묶어, 커스텀 모델 수백 개를 개별 `append`할 때마다 `rebuildIndexes()`(UserDefaults JSON + 전체 모델 순회) 800회가 아닌 **최종 1회만** 실행 → 앱 시작 메인 스레드 블로킹 해소
+- **활성 인덱스 캐시**: `enabledByEntryID`/`enabledLegacyCustomModels` 추가. `visibleModels(in:)/visibleModels(for:)`가 조회 시점에 전체를 `.filter { isEnabled }`로 순회하지 않고 **상수 시간에 활성만 반환** → 380개 팝업 open 시 800개 순회 제거
+- **토글 1초 딜레이 해소**:
+  - `setEnabled` → `rebuildEnabledIndexes(for:)` 증분 갱신(토글 모델이 속한 엔트리만)
+  - `ModelsSettingsView`가 토글(`enabledOverrides`) 변화를 관찰하지 않게 분리 — 각 `ModelRow`(독립 `@ObservedObject catalog`)가 자기 모델만 재평가
+- **`totalModelCount(in:)` O(1)** 추가 — 공급자 Picker "활성 N/전체N" 카운트가 전체 배열 조립 대신 인덱스 크기 조회
+- **팝업 경량화 유지**: `privateEntries` 캐시 + 활성 모델만 표시
+- 유닛 테스트 실행 시간 40s → 18s 단축
+
+## [0.2.1] — 2026-09-03 (기본 모델 개념 제거 — 모든 모델 기본 해제) · `47324c1`
+
+> 리모트 모델 800+개가 기본 `enabled`로 노출되어 피커가 멈추던 원인. 모든 모델을 기본 해제로 전환.
+
+### 변경
+- `isEnabled` 기본값 `true` → **`false` 전환** — 미등록(신규/원격) 모델은 기본 숨김
+- **Apple Intelligence(온디바이스)만 기본 ON** 예외 유지
+- 설정에서 사용자 요청 시 켠 모델만 팝업·피커에 노출
+- 테스트: 기본 해제 반영(`testNewModelDefaultsToDisabled`), `testDefaultOverridePolicy` 추가
+
 ## [0.2.0] — 2026-09-03 (Step A·B — 모델 테스트 심장 + 에이전트 경험)
 
 > 범위 확정: Apple Intelligence 포함 / 단계별 커밋 / 우선순위 권장대로.
