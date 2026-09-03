@@ -7,7 +7,8 @@ struct AnthropicClient: ChatClient {
     let apiKey: String
     let model: String
 
-    /// Anthropic은 max_tokens 필수값 — 컨텍스트 한도와 별개의 응답 길이 상한
+    /// Anthropic은 max_tokens 필수값 — 컨텍스트 한도와 별개의 응답 길이 상한.
+    /// 사용자가 maxTokens를 지정하면 이 기본값을 대체 (v0.2.0 T-202)
     private static let maxTokens = 8192
 
     private struct RequestBody: Encodable {
@@ -18,17 +19,20 @@ struct AnthropicClient: ChatClient {
         let stream: Bool
         /// 캐릭터별 샘플링 온도 — nil이면 생략 (v2.2 T-111)
         let temperature: Double?
+        /// top-p(nucleus sampling) — nil이면 생략 (v0.2.0 T-202)
+        let top_p: Double?
         /// 도구 목록 — nil이면 생략 (v2.4 T-120)
         let tools: [APITool]?
 
         init(model: String, max_tokens: Int, system: String?, messages: [Message],
-             stream: Bool, temperature: Double?, tools: [APITool]? = nil) {
+             stream: Bool, temperature: Double?, topP: Double? = nil, tools: [APITool]? = nil) {
             self.model = model
             self.max_tokens = max_tokens
             self.system = system
             self.messages = messages
             self.stream = stream
             self.temperature = temperature
+            self.top_p = topP
             self.tools = tools?.isEmpty == true ? nil : tools
         }
 
@@ -170,8 +174,9 @@ struct AnthropicClient: ChatClient {
         stream(messages: messages, systemPrompt: systemPrompt, temperature: nil, onUsage: onUsage)
     }
 
-    /// temperature 지원 스트리밍 (v2.2 T-111)
+    /// temperature/topP/maxTokens 지원 스트리밍 (v2.2 T-111, v0.2.0 T-202)
     func stream(messages: [ChatMessage], systemPrompt: String?, temperature: Double?,
+                topP: Double? = nil, maxTokens: Int? = nil,
                 onUsage: ((Int?, Int?) -> Void)?) -> AsyncThrowingStream<String, Error> {
         DebugLogger.shared.info("APP", "[FEATURE] Anthropic 스트리밍 진입: 메시지 \(messages.count)개")
         return AsyncThrowingStream { continuation in
@@ -189,11 +194,12 @@ struct AnthropicClient: ChatClient {
 
                     let body = RequestBody(
                         model: model,
-                        max_tokens: Self.maxTokens,
+                        max_tokens: maxTokens ?? Self.maxTokens,
                         system: (systemPrompt?.isEmpty == false) ? systemPrompt : nil,
                         messages: chat.map { .init(role: $0.role.rawValue, content: $0.content) },
                         stream: true,
-                        temperature: temperature
+                        temperature: temperature,
+                        topP: topP
                     )
 
                     var urlRequest = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)

@@ -21,6 +21,14 @@ extension ChatClient {
                 onUsage: ((Int?, Int?) -> Void)?) -> AsyncThrowingStream<String, Error> {
         stream(messages: messages, systemPrompt: systemPrompt, onUsage: onUsage)
     }
+
+    /// topP/maxTokens 지원 호출 (v0.2.0 T-202) — 미지원 클라이언트는 temperature만 쓰고 나머지를 무시하는 기본 폴백.
+    /// 지원 클라이언트(OpenAICompatible/Gemini/Anthropic/Ollama)가 오버라이드한다.
+    func stream(messages: [ChatMessage], systemPrompt: String?, temperature: Double?,
+                topP: Double?, maxTokens: Int?,
+                onUsage: ((Int?, Int?) -> Void)?) -> AsyncThrowingStream<String, Error> {
+        stream(messages: messages, systemPrompt: systemPrompt, temperature: temperature, onUsage: onUsage)
+    }
 }
 
 struct OpenAICompatibleClient: ChatClient {
@@ -40,17 +48,24 @@ struct OpenAICompatibleClient: ChatClient {
         let stream_options: StreamOptions?
         /// 캐릭터별 샘플링 온도 — nil이면 키 자체를 생략 (v2.2 T-111)
         let temperature: Double?
+        /// nucleus sampling (top-p) — nil이면 생략 (v0.2.0 T-202)
+        let top_p: Double?
+        /// 응답 최대 토큰 수 — nil이면 생략 (v0.2.0 T-202)
+        let max_tokens: Int?
         /// 도구 목록 — nil이면 키 생략 (v2.4 T-120)
         let tools: [APITool]?
         let tool_choice: String?
 
         init(model: String, messages: [Message], stream: Bool, stream_options: StreamOptions?,
-             temperature: Double?, tools: [APITool]? = nil) {
+             temperature: Double?, topP: Double? = nil, maxTokens: Int? = nil,
+             tools: [APITool]? = nil) {
             self.model = model
             self.messages = messages
             self.stream = stream
             self.stream_options = stream_options
             self.temperature = temperature
+            self.top_p = topP
+            self.max_tokens = maxTokens
             self.tools = tools?.isEmpty == true ? nil : tools
             self.tool_choice = tools?.isEmpty == false ? "auto" : nil
         }
@@ -247,12 +262,14 @@ struct OpenAICompatibleClient: ChatClient {
         return apiMessages
     }
 
-    /// 요청 바디 JSON 생성 — temperature 포함 여부 검증 가능하도록 내부 공개 (v2.2 T-111)
+    /// 요청 바디 JSON 생성 — temperature 포함 여부 검증 가능하도록 내부 공개 (v2.2 T-111, v0.2.0 T-202 topP/maxTokens)
     static func encodeRequestBody(model: String, apiMessages: [Message],
                                   streamOptions: StreamOptions?, temperature: Double?,
+                                  topP: Double? = nil, maxTokens: Int? = nil,
                                   tools: [APITool]? = nil) throws -> Data {
         let body = RequestBody(model: model, messages: apiMessages, stream: true,
-                               stream_options: streamOptions, temperature: temperature, tools: tools)
+                               stream_options: streamOptions, temperature: temperature,
+                               topP: topP, maxTokens: maxTokens, tools: tools)
         return try JSONEncoder().encode(body)
     }
 
@@ -269,6 +286,100 @@ struct OpenAICompatibleClient: ChatClient {
 
     func stream(messages: [ChatMessage], systemPrompt: String?, onUsage: ((Int?, Int?) -> Void)?) -> AsyncThrowingStream<String, Error> {
         stream(messages: messages, systemPrompt: systemPrompt, temperature: nil, onUsage: onUsage)
+    }
+
+    /// topP/maxTokens 지원 스트리밍 (v0.2.0 T-202) — 인프라 핵심, 실제 요청 바디에 top_p/max_tokens 반영
+    func stream(messages: [ChatMessage], systemPrompt: String?, temperature: Double?,
+                topP: Double?, maxTokens: Int?,
+                onUsage: ((Int?, Int?) -> Void)?) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard !apiKey.isEmpty || provider == .custom else {
+                        // 커스텀 엔드포인트(LM Studio 등)는 키 없이도 호출 가능
+                        throw AppError.missingKey(provider)
+                    }
+
+                    let apiMessages = Self.makeAPIMessages(systemPrompt: systemPrompt, messages: messages)
+
+                    // stream_options는 검증된 공급자에만 전송 — 임의 로컬 서버의 미지원 파라미터 400 방어 (v1.9 T-76)
+                    let streamOptions: StreamOptions? = provider == .custom ? nil : .init(include_usage: true)
+                    let data = try Self.encodeRequestBody(
+                        model: model, apiMessages: apiMessages,
+                        streamOptions: streamOptions, temperature: temperature,
+                        topP: topP, maxTokens: maxTokens)
+
+                    let urlStr = baseURL + "/chat/completions"
+                    DebugLogger.shared.info("API-OPENAI", "요청 URL: \(urlStr)")
+                    DebugLogger.shared.debug("API-OPENAI", "메시지 수: \(apiMessages.count), 모델: \(model)")
+
+                    var urlRequest = URLRequest(url: URL(string: urlStr)!)
+                    urlRequest.httpMethod = "POST"
+                    urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                    urlRequest.httpBody = data
+                    urlRequest.timeoutInterval = 120
+
+                    DebugLogger.shared.debug("API-OPENAI", "요청 전송 중...")
+                    let (bytes, response) = try await URLSession.shared.bytes(for: urlRequest)
+                    guard let http = response as? HTTPURLResponse else {
+                        throw AppError.network("응답 없음")
+                    }
+                    DebugLogger.shared.info("API-OPENAI", "응답 상태: HTTP \(http.statusCode)")
+
+                    if !(200..<300).contains(http.statusCode) {
+                        var errBody = Data()
+                        for try await b in bytes { errBody.append(b) }
+                        let text = String(data: errBody, encoding: .utf8) ?? ""
+                        DebugLogger.shared.error("API-OPENAI", "서버 에러 HTTP \(http.statusCode): \(text.prefix(500))")
+                        throw AppError.serverError(http.statusCode, text)
+                    }
+
+                    DebugLogger.shared.debug("API-OPENAI", "스트리밍 수신 시작...")
+                    var lineCount = 0
+                    var lastPromptTokens: Int?
+                    var lastCompletionTokens: Int?
+                    for try await line in bytes.lines {
+                        guard line.hasPrefix("data:") else { continue }
+                        let payload = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                        if payload == "[DONE]" {
+                            DebugLogger.shared.debug("API-OPENAI", "[DONE] 수신. 스트리밍 종료.")
+                            break
+                        }
+                        let parsed = Self.parseSSEPayload(payload)
+                        if let text = parsed.text {
+                            continuation.yield(text)
+                            lineCount += 1
+                        }
+                        if parsed.promptTokens != nil || parsed.completionTokens != nil {
+                            lastPromptTokens = parsed.promptTokens
+                            lastCompletionTokens = parsed.completionTokens
+                        }
+                    }
+                    DebugLogger.shared.info("API-OPENAI", "스트리밍 완료: \(lineCount)개 데이터 라인 처리")
+
+                    if lastPromptTokens != nil || lastCompletionTokens != nil {
+                        onUsage?(lastPromptTokens, lastCompletionTokens)
+                        DebugLogger.shared.info("API-OPENAI", "[FEATURE] usage 수신됨: ↑\(lastPromptTokens.map(String.init) ?? "-") ↓\(lastCompletionTokens.map(String.init) ?? "-")")
+                    }
+                    continuation.finish()
+                } catch is CancellationError {
+                    DebugLogger.shared.warn("API-OPENAI", "요청 취소됨")
+                    continuation.finish()
+                } catch let error as AppError {
+                    DebugLogger.shared.error("API-OPENAI", "[\(error.errorCode)] \(error.localizedDescription ?? "")")
+                    continuation.finish(throwing: error)
+                } catch {
+                    DebugLogger.shared.error("API-OPENAI", "예상 못한 에러: \(error.localizedDescription)")
+                    if (error as NSError).code == NSURLErrorTimedOut {
+                        continuation.finish(throwing: AppError.timeout)
+                    } else {
+                        continuation.finish(throwing: AppError.network(error.localizedDescription))
+                    }
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
     /// temperature 지원 스트리밍 (v2.2 T-111) — nil이면 요청에서 생략(공급자 기본값)

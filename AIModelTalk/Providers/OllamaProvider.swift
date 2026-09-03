@@ -10,6 +10,21 @@ struct OllamaClient: ChatClient {
         let model: String
         let messages: [Message]
         let stream: Bool
+        /// 샘플링 옵션 — nil이면 생략 (v0.2.0 T-202)
+        let options: Options?
+
+        init(model: String, messages: [Message], stream: Bool, options: Options? = nil) {
+            self.model = model
+            self.messages = messages
+            self.stream = stream
+            self.options = options
+        }
+
+        struct Options: Codable {
+            let temperature: Double?
+            let top_p: Double?
+            let num_predict: Int?
+        }
     }
 
     private struct Message: Codable {
@@ -47,6 +62,87 @@ struct OllamaClient: ChatClient {
                     }
 
                     let body = RequestBody(model: model, messages: apiMessages, stream: true)
+                    let data = try JSONEncoder().encode(body)
+
+                    let urlStr = "\(baseURL)/api/chat"
+                    DebugLogger.shared.info("API-OLLAMA", "요청 URL: \(urlStr), 모델: \(model)")
+
+                    var urlRequest = URLRequest(url: URL(string: urlStr)!)
+                    urlRequest.httpMethod = "POST"
+                    urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    urlRequest.httpBody = data
+                    urlRequest.timeoutInterval = 120
+
+                    let (bytes, response) = try await URLSession.shared.bytes(for: urlRequest)
+                    guard let http = response as? HTTPURLResponse else {
+                        throw AppError.network("응답 없음")
+                    }
+                    DebugLogger.shared.info("API-OLLAMA", "응답 상태: HTTP \(http.statusCode)")
+
+                    if !(200..<300).contains(http.statusCode) {
+                        var errBody = Data()
+                        for try await b in bytes { errBody.append(b) }
+                        let text = String(data: errBody, encoding: .utf8) ?? ""
+                        DebugLogger.shared.error("API-OLLAMA", "서버 에러 HTTP \(http.statusCode): \(text.prefix(500))")
+                        throw AppError.serverError(http.statusCode, text)
+                    }
+
+                    DebugLogger.shared.debug("API-OLLAMA", "스트리밍 수신 시작...")
+                    var lastChunk: StreamChunk?
+                    for try await line in bytes.lines {
+                        guard let jsonData = line.data(using: .utf8) else { continue }
+                        if let chunk = try? JSONDecoder().decode(StreamChunk.self, from: jsonData),
+                           let text = chunk.message?.content {
+                            continuation.yield(text)
+                        }
+                        lastChunk = try? JSONDecoder().decode(StreamChunk.self, from: jsonData)
+                        if lastChunk?.done == true {
+                            DebugLogger.shared.debug("API-OLLAMA", "[DONE] 수신. 스트리밍 종료.")
+                            break
+                        }
+                    }
+                    DebugLogger.shared.info("API-OLLAMA", "스트리밍 완료")
+                    continuation.finish()
+                } catch is CancellationError {
+                    DebugLogger.shared.warn("API-OLLAMA", "요청 취소됨")
+                    continuation.finish()
+                } catch let error as AppError {
+                    DebugLogger.shared.error("API-OLLAMA", "[\(error.errorCode)] \(error.localizedDescription ?? "")")
+                    continuation.finish(throwing: error)
+                } catch {
+                    DebugLogger.shared.error("API-OLLAMA", "예상 못한 에러: \(error.localizedDescription)")
+                    if (error as NSError).code == NSURLErrorTimedOut {
+                        continuation.finish(throwing: AppError.timeout)
+                    } else {
+                        continuation.finish(throwing: AppError.network(error.localizedDescription))
+                    }
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// temperature/topP/maxTokens 지원 스트리밍 (v0.2.0 T-202) — options에 반영
+    func stream(messages: [ChatMessage], systemPrompt: String?, temperature: Double?,
+                topP: Double? = nil, maxTokens: Int? = nil,
+                onUsage: ((Int?, Int?) -> Void)?) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    var apiMessages: [Message] = []
+                    if let sys = systemPrompt, !sys.isEmpty {
+                        apiMessages.append(Message(role: "system", text: sys))
+                    }
+                    for msg in messages where msg.role == .user || msg.role == .assistant {
+                        apiMessages.append(Message(role: msg.role.rawValue, text: msg.content, attachments: msg.attachments))
+                    }
+
+                    // 온도/topP/maxTokens 중 하나라도 설정되면 options 포함, 아니면 생략
+                    let hasOptions = temperature != nil || topP != nil || maxTokens != nil
+                    let options: RequestBody.Options? = hasOptions
+                        ? .init(temperature: temperature, top_p: topP, num_predict: maxTokens)
+                        : nil
+                    let body = RequestBody(model: model, messages: apiMessages, stream: true, options: options)
                     let data = try JSONEncoder().encode(body)
 
                     let urlStr = "\(baseURL)/api/chat"

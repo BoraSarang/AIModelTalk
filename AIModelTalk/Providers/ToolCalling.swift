@@ -73,4 +73,36 @@ extension ChatClient {
         }
         return rawStreamWithTools(messages: messages, systemPrompt: systemPrompt, temperature: temperature, tools: tools, onUsage: onUsage)
     }
+
+    /// topP/maxTokens 지원 도구 스트리밍 (v0.2.0 T-202) — 도구가 없을 때 텍스트 stream에 파라미터 전달.
+    /// 도구가 있는 경우 rawStreamWithTools는 기존 시그니처라 topP/maxTokens 미반영(도구 경로는 별도 후속).
+    func streamWithTools(
+        messages: [ChatMessage], systemPrompt: String?, temperature: Double?,
+        topP: Double?, maxTokens: Int?, tools: [LLMToolDefinition],
+        onUsage: ((Int?, Int?) -> Void)?
+    ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
+        if tools.isEmpty {
+            let base = stream(messages: messages, systemPrompt: systemPrompt, temperature: temperature,
+                              topP: topP, maxTokens: maxTokens, onUsage: onUsage)
+            return AsyncThrowingStream { continuation in
+                let task = Task {
+                    do {
+                        for try await chunk in base {
+                            continuation.yield(.text(chunk))
+                        }
+                        continuation.finish()
+                    } catch {
+                        continuation.finish(throwing: error)
+                    }
+                }
+                continuation.onTermination = { _ in task.cancel() }
+            }
+        }
+        guard supportsTools else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: AppError.network("이 모델은 도구 호출을 지원하지 않습니다"))
+            }
+        }
+        return rawStreamWithTools(messages: messages, systemPrompt: systemPrompt, temperature: temperature, tools: tools, onUsage: onUsage)
+    }
 }

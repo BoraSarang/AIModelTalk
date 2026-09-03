@@ -2,6 +2,7 @@ import XCTest
 @testable import AIModelTalk
 
 /// v0.2.0 — 공급자 무관 EOL(410)/모델없음(404) 자동 비활성화 + 갱신 리포트 사유 상세 테스트
+@MainActor
 final class UnavailableModelTests_V020: XCTestCase {
 
     // MARK: - AppError 판별
@@ -54,14 +55,26 @@ final class UnavailableModelTests_V020: XCTestCase {
     }
 
     func testSummaryTextSuccessOnly() {
+        // 전부 .ok + 추가/제거 0 → "변경 없음" 분기 (실제 구현 동작 검증)
         let results = [
             ProviderRefreshResult(provider: .groq, status: .ok),
             ProviderRefreshResult(provider: .gemini, status: .ok),
         ]
         let text = CatalogRefreshReport.summaryText(results)
-        XCTAssertTrue(text.contains("성공"))
+        XCTAssertTrue(text.contains("변경 없음"))
         XCTAssertTrue(text.contains("Groq"))
         XCTAssertTrue(text.contains("Gemini"))
+        XCTAssertFalse(text.contains("실패"))
+    }
+
+    func testSummaryTextAPIsUnset() {
+        // 전부 .skipped → "API 키가 설정된 공급자가 없습니다"
+        let results = [
+            ProviderRefreshResult(provider: .groq, status: .skipped),
+            ProviderRefreshResult(provider: .gemini, status: .skipped),
+        ]
+        let text = CatalogRefreshReport.summaryText(results)
+        XCTAssertTrue(text.contains("API 키가 설정된 공급자가 없습니다"))
     }
 
     // MARK: - 자동 비활성화

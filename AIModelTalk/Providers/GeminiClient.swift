@@ -12,6 +12,15 @@ struct GeminiClient: ChatClient {
 
         struct GenerationConfig: Codable {
             let temperature: Double?
+            let topP: Double?
+            let maxOutputTokens: Int?
+
+            init(temperature: Double?, topP: Double? = nil, maxOutputTokens: Int? = nil) {
+                self.temperature = temperature
+                self.topP = topP
+                self.maxOutputTokens = maxOutputTokens
+            }
+            // JSONEncoder는 nil 옵셔널 필드를 자동 생략 → 미설정 파라미터는 키가 안 나감
         }
 
         struct Content: Codable {
@@ -86,8 +95,9 @@ struct GeminiClient: ChatClient {
         stream(messages: messages, systemPrompt: systemPrompt, temperature: nil, onUsage: onUsage)
     }
 
-    /// temperature 지원 스트리밍 (v2.2 T-111) — nil이면 generationConfig 생략
+    /// temperature/topP/maxTokens 지원 스트리밍 (v2.2 T-111, v0.2.0 T-202) — nil 파라미터는 generationConfig 생략
     func stream(messages: [ChatMessage], systemPrompt: String?, temperature: Double?,
+                topP: Double? = nil, maxTokens: Int? = nil,
                 onUsage: ((Int?, Int?) -> Void)?) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -117,7 +127,13 @@ struct GeminiClient: ChatClient {
                     }
 
                     let instruction = systemPrompt.map { RequestBody.Instruction(text: $0) }
-                    let generationConfig = temperature.map { RequestBody.GenerationConfig(temperature: $0) }
+                    let hasParams = temperature != nil || topP != nil || maxTokens != nil
+                    let generationConfig: RequestBody.GenerationConfig?
+                    if hasParams {
+                        generationConfig = RequestBody.GenerationConfig(temperature: temperature, topP: topP, maxOutputTokens: maxTokens)
+                    } else {
+                        generationConfig = nil
+                    }
                     let body = RequestBody(contents: contents, systemInstruction: instruction, generationConfig: generationConfig)
                     let data = try JSONEncoder().encode(body)
 
