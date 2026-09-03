@@ -109,7 +109,8 @@ struct BenchmarkView: View {
     // MARK: - 헬퍼
     private var configuredModels: [AIModel] {
         catalog.models.filter { model in
-            !model.provider.isAutoDetected || !AppSettings.shared.apiKey(for: model.provider).isEmpty
+            ModelCatalog.shared.isEnabled(model) &&
+            (!model.provider.isAutoDetected || !AppSettings.shared.apiKey(for: model.provider).isEmpty)
         }
     }
 

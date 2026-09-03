@@ -32,7 +32,7 @@ struct ComparisonView: View {
                     let entries = ProviderEntry.currentList()
                     let fallbackID = entries.compactMap(\.endpoint).first?.id
                     ForEach(entries) { entry in
-                        let models = ModelCatalog.freeFirst(ModelCatalog.shared.models(in: entry, fallbackFirstEndpointID: fallbackID))
+                        let models = ModelCatalog.freeFirst(ModelCatalog.shared.visibleModels(in: entry, fallbackFirstEndpointID: fallbackID))
                         if !models.isEmpty {
                             Menu {
                                 ForEach(models) { model in
@@ -362,7 +362,7 @@ struct ComparisonView: View {
     }
 
     private func countFor(_ entry: ProviderEntry, fallbackID: UUID?) -> Int {
-        ModelCatalog.shared.models(in: entry, fallbackFirstEndpointID: fallbackID)
+        ModelCatalog.shared.visibleModels(in: entry, fallbackFirstEndpointID: fallbackID)
             .filter { selectedModelIDs.contains($0.id) }.count
     }
 }

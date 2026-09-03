@@ -194,7 +194,7 @@ private struct SplitSlotPanelView: View {
 
         return Menu {
             ForEach(entries) { entry in
-                let models = ModelCatalog.freeFirst(ModelCatalog.shared.models(in: entry, fallbackFirstEndpointID: fallbackID))
+                let models = ModelCatalog.freeFirst(ModelCatalog.shared.visibleModels(in: entry, fallbackFirstEndpointID: fallbackID))
                 if !models.isEmpty {
                     Menu(entry.title) {
                         ForEach(models) { model in

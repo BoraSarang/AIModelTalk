@@ -9,16 +9,20 @@ struct CompareModelPickerButton: View {
 
     var body: some View {
         Button {
-            // popover 열기 — 선택·실행은 팝오버 내부에서
             showPopover.toggle()
         } label: {
-            Image(systemName: "rectangle.split.2x1")
+            Image(systemName: viewModel.isComparing ? "rectangle.split.2x1.fill" : "rectangle.split.2x1")
                 .font(.system(size: 14))
                 .foregroundStyle(viewModel.isComparing ? Color.accentColor : Color.secondary)
-                .background(viewModel.isComparing ? Color.accentColor.opacity(0.15) : .clear)
+                .frame(minWidth: 22, minHeight: 22)
+                .contentShape(Rectangle())
+                .background(hovered ? Color.accentColor.opacity(0.15) : .clear)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
         }
         .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) { hovered = hovering }
+        }
         .popover(isPresented: $showPopover, arrowEdge: .bottom) {
             compareSelector
         }
@@ -26,49 +30,31 @@ struct CompareModelPickerButton: View {
     }
 
     @State private var showPopover = false
+    @State private var hovered = false
 
     private var compareSelector: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("모델별 나란히 비교")
                 .font(.headline)
-            Text("선택한 모델들에 같은 대화 컨텍스트를 보냅니다.")
+            Text("행을 클릭해 선택/해제. 여러 모델에 같은 대화 컨텍스트를 보냅니다.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            // 모델 선택 — 공급자별 메뉴 (ComparisonView 패턴 재사용)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+            // 모델 선택 — 공급자 섹션별 토글 리스트 (행 클릭 = 선택/해제)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
                     let entries = ProviderEntry.currentList()
                     let fallbackID = entries.compactMap(\.endpoint).first?.id
                     ForEach(entries) { entry in
-                        let models = ModelCatalog.shared.models(in: entry, fallbackFirstEndpointID: fallbackID)
+                        let models = ModelCatalog.shared.visibleModels(in: entry, fallbackFirstEndpointID: fallbackID)
                         if !models.isEmpty {
-                            Menu {
-                                ForEach(models) { model in
-                                    Button {
-                                        toggle(model)
-                                    } label: {
-                                        if viewModel.selectedCompareModelIDs.contains(model.id) {
-                                            Label(model.displayName, systemImage: "checkmark")
-                                        } else {
-                                            Text(model.displayName)
-                                        }
-                                    }
-                                }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Circle()
-                                        .fill(Color(hex: entry.colorHex) ?? .accentColor)
-                                        .frame(width: 6, height: 6)
-                                    Text("\(entry.title) (\(countFor(entry, fallbackID: fallbackID)))")
-                                }
-                            }
-                            .menuStyle(.borderedButton)
+                            section(entry: entry, models: models)
                         }
                     }
                 }
+                .padding(.vertical, 2)
             }
-            .frame(maxWidth: 320)
+            .frame(maxWidth: 320, maxHeight: 240)
 
             // 온도 (T-202) — nil이면 공급자 기본값
             HStack(spacing: 6) {
@@ -87,6 +73,9 @@ struct CompareModelPickerButton: View {
 
             Divider()
             HStack {
+                Text("\(viewModel.selectedCompareModelIDs.count)개 선택")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Button("취소") { viewModel.cancelComparison() }
                     .keyboardShortcut(.cancelAction)
@@ -102,6 +91,40 @@ struct CompareModelPickerButton: View {
         }
         .padding(14)
         .frame(width: 360)
+    }
+
+    /// 공급자 섹션 — 헤더 + 모델 행(클릭 토글)
+    private func section(entry: ProviderEntry, models: [AIModel]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color(hex: entry.colorHex) ?? .accentColor)
+                    .frame(width: 7, height: 7)
+                Text(entry.title)
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            ForEach(models) { model in
+                Button {
+                    toggle(model)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: viewModel.selectedCompareModelIDs.contains(model.id) ? "checkmark.square.fill" : "square")
+                            .foregroundStyle(viewModel.selectedCompareModelIDs.contains(model.id) ? Color.accentColor : Color.secondary)
+                        Text(model.displayName)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.vertical, 2)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private var temperatureBinding: Binding<Double?> {
@@ -123,10 +146,5 @@ struct CompareModelPickerButton: View {
         } else {
             viewModel.selectedCompareModelIDs.insert(model.id)
         }
-    }
-
-    private func countFor(_ entry: ProviderEntry, fallbackID: UUID?) -> Int {
-        ModelCatalog.shared.models(in: entry, fallbackFirstEndpointID: fallbackID)
-            .filter { viewModel.selectedCompareModelIDs.contains($0.id) }.count
     }
 }

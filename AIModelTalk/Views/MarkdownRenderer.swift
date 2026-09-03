@@ -283,15 +283,19 @@ struct MarkdownWebView: NSViewRepresentable {
                 : ""
 
             // 스트리밍: 점진적 렌더링 / 완료: 전체 렌더링 후 높이 보고
+            // 고정 높이(내부 스크롤) 렌더러는 스트리밍 중 맨 아래로 자동 스크롤 (비교 컬럼 T-201)
+            let autoscrollFlag = scrollsInternally ? "window.__AUTOSCROLL = true;" : "window.__AUTOSCROLL = false;"
             let renderScript: String
             if isStreaming {
                 renderScript = """
+                \(autoscrollFlag)
                 initStreaming('content');
                 var md = `\(escapedMarkdown)`;
                 appendChunk(md);
                 """
             } else {
                 renderScript = """
+                \(autoscrollFlag)
                 var md = `\(escapedMarkdown)`;
                 document.getElementById('content').innerHTML = renderMarkdown(md);
                 installArtifactButtons(window.__artifacts);
@@ -299,6 +303,7 @@ struct MarkdownWebView: NSViewRepresentable {
                   var el = document.getElementById('content');
                   var h = Math.max(el.scrollHeight, el.offsetHeight, 40);
                   window.webkit.messageHandlers.heightChange.postMessage(h);
+                  scrollToBottom();
                 });
                 """
             }

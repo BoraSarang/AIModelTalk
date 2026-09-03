@@ -225,6 +225,7 @@ function appendChunk(fullMarkdown) {
   streamingState.container.innerHTML = html;
   streamingState.lastRenderedHTML = html;
   reportHeight();
+  scrollToBottom();
 }
 
 function finalizeMarkdown() {
@@ -232,6 +233,17 @@ function finalizeMarkdown() {
   var content = streamingState.container.getAttribute('data-full-markdown') || streamingState.container.textContent;
   streamingState.container.innerHTML = renderMarkdown(content);
   reportHeight();
+  scrollToBottom();
+}
+
+// 고정 높이(내부 스크롤) 렌더러에서 스트리밍 중 맨 아래로 자동 스크롤.
+// window.__AUTOSCROLL이 true인 경우에만 동작 — 채팅 말풍선(비고정)에는 영향 없음.
+function scrollToBottom() {
+  if (!window.__AUTOSCROLL) return;
+  var scroller = document.scrollingElement || document.documentElement;
+  if (scroller && scroller.scrollHeight > scroller.clientHeight) {
+    scroller.scrollTop = scroller.scrollHeight;
+  }
 }
 
 var heightReportTimer = null;

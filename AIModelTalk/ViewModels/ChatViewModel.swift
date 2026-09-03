@@ -1333,7 +1333,9 @@ final class ChatViewModel: ObservableObject {
                 systemPrompt: systemPrompt,
                 temperature: self.compareTemperature,
                 models: models)
-            self.isComparing = false
+            // 완료 후에도 오버레이를 유지한다 — 사용자가 결과를 보고
+            // "이 답변으로 대화 계속"(채택) 또는 "취소"로 직접 닫기 전까지.
+            // (isComparing 유지 → CompareOverlayView가 결과 그리드를 계속 표시)
         }
     }
 
