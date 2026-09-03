@@ -38,8 +38,19 @@
 - `ComparisonService.failureHint` 제거 → 원인이 `errorDescription`에 통합되어 비교·채팅 래인에서 중복 이어붙임("X — Y") 정리
 - `error_message_ko.json` E-MAC-API-1001 문구 동기화
 
+### 추가 기능 — topP/maxTokens 파라미터 인프라 (T-202, 다음 커밋)
+- `ChatClient.stream(messages:systemPrompt:temperature:topP:maxTokens:onUsage:)` 확장 — 네이티브 오버라이드 + 기본 폴백(non-breaking)
+- 공급자별 파라미터 매핑 (nil이면 요청에서 생략):
+  - **OpenAI 호환**: `RequestBody`에 `top_p`/`max_tokens` 추가, `encodeRequestBody` 확장
+  - **Gemini**: `GenerationConfig`에 `topP`/`maxOutputTokens`, `temperature`만 있을 때와 구분해 config 생성
+  - **Anthropic**: `top_p` 추가, `max_tokens`는 네이티브 필수값(8192)에서 사용자 지정 시 대체
+  - **Ollama**: `options.temperature/top_p/num_predict` — temperature 미지원이던 것을 T-202에서 온도까지 최초 지원
+- `ToolCalling.streamWithTools(...topP:maxTokens:)` 오버라이드 — 도구 없을 때 텍스트 스트림에 파라미터 전달(도구 포함 경로는 후속)
+- 실제 사용처(비교·채팅 편집 UI / 성능 메트릭 / "무엇을 보냈는지" 패널)는 후속 커밋에서 이 인프라를 연결
+
 ### 검증
-- macOS build_and_run 성공 · 단위 테스트 265건 통과(신규 UnavailableModelTests_V020 6건·ParallelComparisonTests_T201 3건 포함)
+- 단위 테스트 **282건 전부 통과**(신규 ModelParameterTests_T202 4건 포함) · 빌드 성공
+- UnavailableModelTests_V020 수정: `@MainActor` 격리 추가 + `summaryTextSuccessOnly`를 실제 구현("변경 없음")과 정합 + 빈키 사유 테스트 1건 추가
 
 ## [0.1.0] — 2026-09-03 (초기 릴리스)
 
