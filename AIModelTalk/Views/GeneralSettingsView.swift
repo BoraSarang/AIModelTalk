@@ -137,6 +137,17 @@ struct GeneralSettingsView: View {
                 }
             }
 
+            Section("에이전트 (내장 도구)") {
+                Toggle("에이전트 모드", isOn: $settings.agentMode)
+                Text("켜면 웹 검색·페이지 읽기·계산기 내장 도구를 자동 활성화해 에이전트처럼 동작합니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Toggle("YOLO 모드", isOn: $settings.yoloMode)
+                Text("켜면 모든 도구 실행을 사전 확인 없이 자동 승인합니다. 주의해서 사용하세요.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("기본 시스템 프롬프트") {
                 Text("모든 새 대화와 모델 변경 시 모델에 전달되는 기본 지시입니다. 선택한 스킬은 이 프롬프트 뒤에 누적됩니다.")
                     .font(.caption)

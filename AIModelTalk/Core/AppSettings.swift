@@ -127,6 +127,16 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(showJudgeSummary, forKey: "showJudgeSummary") }
     }
 
+    /// YOLO 모드 (T-204) — 켜면 모든 도구를 자동 승인(사전 확인 없이 실행)
+    @Published var yoloMode: Bool {
+        didSet { UserDefaults.standard.set(yoloMode, forKey: "yoloMode") }
+    }
+
+    /// 에이전트(워크) 모드 (T-204) — 내장 도구(웹검색/페이지읽기/계산기)를 자동 활성화·사용
+    @Published var agentMode: Bool {
+        didSet { UserDefaults.standard.set(agentMode, forKey: "agentMode") }
+    }
+
     /// 판정 모델 우선 공급자 (T-206) — nil이면 NVIDIA→차순위. provider rawValue 저장.
     @Published var judgeProviderRaw: String? {
         didSet { UserDefaults.standard.set(judgeProviderRaw, forKey: "judgeProviderRaw") }
@@ -206,6 +216,8 @@ final class AppSettings: ObservableObject {
         showJudgeSummary = defaults.object(forKey: "showJudgeSummary") as? Bool ?? true
         judgeProviderRaw = defaults.string(forKey: "judgeProviderRaw")
         showSynthesis = defaults.object(forKey: "showSynthesis") as? Bool ?? true
+        yoloMode = defaults.object(forKey: "yoloMode") as? Bool ?? false
+        agentMode = defaults.object(forKey: "agentMode") as? Bool ?? false
         systemPrompt = defaults.string(forKey: "systemPrompt") ?? "당신은 AI 모델입니다. 한국어로 답변해 주세요."
         accentColor = defaults.string(forKey: "accentColor") ?? "system"
         presentationMode = defaults.string(forKey: "presentationMode") ?? "window"

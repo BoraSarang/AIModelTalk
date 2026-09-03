@@ -80,4 +80,20 @@ final class BuiltinToolTests_T204: XCTestCase {
         XCTAssertTrue(record.isError)
         XCTAssertTrue(record.resultPreview?.contains("연결되지 않았습니다") ?? false)
     }
+
+    // MARK: - T-204 에이전트 모드·내장 도구 정의
+
+    func testBuiltinToolDefinitionsIncludeThreeTools() {
+        let defs = ChatViewModel.builtinToolDefinitions()
+        XCTAssertEqual(defs.count, 3)
+        XCTAssertEqual(Set(defs.map(\.name)), Set(["web_search", "fetch_url", "calculator"]))
+    }
+
+    func testBuiltinToolDefinitionsSchemaValid() {
+        for def in ChatViewModel.builtinToolDefinitions() {
+            let data = def.parametersJSON.data(using: .utf8)!
+            let obj = try! JSONSerialization.jsonObject(with: data) as? [String: Any]
+            XCTAssertEqual(obj?["type"] as? String, "object", "\(def.name) 스키마는 object여야")
+        }
+    }
 }

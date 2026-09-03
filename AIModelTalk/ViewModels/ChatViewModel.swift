@@ -377,8 +377,26 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    /// 권한 게이트 — 정책 조회, ask면 UI 프롬프트 대기
+    /// 내장 도구(에이전트 모드) 스키마 (T-204) — 웹검색·페이지읽기·계산기
+    static func builtinToolDefinitions() -> [LLMToolDefinition] {
+        [
+            LLMToolDefinition(name: "web_search", description: "실시간 웹 검색. 질문에 최신 정보가 필요할 때 사용하세요.", parametersJSON: """
+            {"type":"object","properties":{"query":{"type":"string","description":"검색어"}},"required":["query"]}
+            """),
+            LLMToolDefinition(name: "fetch_url", description: "주어진 URL의 웹 페이지 본문을 읽어옵니다.", parametersJSON: """
+            {"type":"object","properties":{"url":{"type":"string","description":"http(s) URL"}},"required":["url"]}
+            """),
+            LLMToolDefinition(name: "calculator", description: "사칙연산 계산. 정확한 수치 계산 시 사용하세요.", parametersJSON: """
+            {"type":"object","properties":{"expression":{"type":"string","description":"예: (2+3)*4"}},"required":["expression"]}
+            """)
+        ]
+    }
+
+    /// 권한 게이트 — 정책 조회, YOLO 자동 승인, ask면 UI 프롬프트 대기
     private func permissionGate(for call: LLMToolCall) async -> ToolLoopService.PermissionDecision {
+        if AppSettings.shared.yoloMode {
+            return .allowed // T-204 YOLO — 모든 도구 자동 승인
+        }
         switch MCPPermissionStore.shared.policy(forTool: call.name) {
         case .alwaysAllow:
             return .allowed
@@ -1179,15 +1197,20 @@ final class ChatViewModel: ObservableObject {
                     }
                 }
 
-                // MCP 도구 경로 (v2.4 T-120) — 설정 활성 + 도구 존재 + 클라이언트 지원
+                // 도구 경로 (v2.4 T-120, T-204) — MCP 설정 활성 또는 에이전트 모드 시 진입
                 var toolRecords: [ToolLoopService.ExecutionRecord] = []
                 var usedToolPath = false
-                if AppSettings.shared.mcpToolsEnabled {
+                let mcpOn = AppSettings.shared.mcpToolsEnabled
+                let agentOn = AppSettings.shared.agentMode
+                if (mcpOn || agentOn) && client.supportsTools {
                     let connections = await self.activeMCPConnections()
-                    let tools = self.toolDefinitions(from: connections)
-                    if client.supportsTools, !tools.isEmpty {
+                    var tools = mcpOn ? self.toolDefinitions(from: connections) : []
+                    if agentOn {
+                        tools += Self.builtinToolDefinitions()
+                    }
+                    if !tools.isEmpty {
                         usedToolPath = true
-                        DebugLogger.shared.info("SEND", "[TOOLS] 도구 루프 진입 — 도구 \(tools.count)개")
+                        DebugLogger.shared.info("SEND", "[TOOLS] 도구 루프 진입 — 도구 \(tools.count)개 (MCP:\(tools.contains { $0.name != "web_search" && $0.name != "fetch_url" && $0.name != "calculator" }), 에이전트:\(agentOn))")
                         toolRecords = try await ToolLoopService.run(
                             client: client,
                             messages: ctx.history,
@@ -1202,8 +1225,8 @@ final class ChatViewModel: ObservableObject {
                             },
                             onUsage: onUsageCapture)
                         NotificationCenter.default.post(name: .scrollToBottom, object: nil)
-                    } else if !tools.isEmpty {
-                        DebugLogger.shared.info("SEND", "[TOOLS] 모델이 도구 미지원(\(attemptModel.provider.rawValue)) — 일반 경로 폴백")
+                    } else if agentOn {
+                        DebugLogger.shared.info("SEND", "[TOOLS] 에이전트 모드지만 내장 도구 없음 — 일반 경로")
                     } else {
                         DebugLogger.shared.info("SEND", "[TOOLS] 연결된 MCP 서버 없음 — 일반 경로")
                     }
