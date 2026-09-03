@@ -96,4 +96,23 @@ final class BuiltinToolTests_T204: XCTestCase {
             XCTAssertEqual(obj?["type"] as? String, "object", "\(def.name) 스키마는 object여야")
         }
     }
+
+    // MARK: - T-205 웹 검색 강화 (parse_link 풋프린스)
+
+    func testFormatResultsIncludesBodyWhenPresent() {
+        let results = [
+            WebSearchResult(title: "제목", url: "https://example.com/a", content: "스니펫", body: "본문입니다 내용"),
+            WebSearchResult(title: "제목2", url: "https://example.com/b", content: "스니펫2")
+        ]
+        let text = WebSearchService.formatResults(results, query: "테스트")
+        XCTAssertTrue(text.contains("[1] 제목"))
+        XCTAssertTrue(text.contains("〔본문〕본문입니다 내용"), "body가 있으면 본문 포함")
+        XCTAssertTrue(text.contains("〔본문〕"), "첫 결과에 body가 있으므로 표시")
+    }
+
+    func testFormatResultsKeepsCitationNumbers() {
+        let results = (1...4).map { WebSearchResult(title: "r\($0)", url: "https://e.com/\($0)", content: "c\($0)") }
+        let text = WebSearchService.formatResults(results, query: "q")
+        for i in 1...4 { XCTAssertTrue(text.contains("[\(i)]"), "인용 번호 [\(i)] 포함") }
+    }
 }

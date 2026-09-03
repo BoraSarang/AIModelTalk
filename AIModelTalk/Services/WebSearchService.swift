@@ -17,12 +17,15 @@ struct WebSearchResult: Identifiable, Equatable {
     let title: String
     let url: String
     let content: String
+    /// parse_link 본문 (T-205) — fetch_url로 추출한 페이지 본문, 없으면 nil
+    var body: String?
 
-    init(id: UUID = UUID(), title: String, url: String, content: String) {
+    init(id: UUID = UUID(), title: String, url: String, content: String, body: String? = nil) {
         self.id = id
         self.title = title
         self.url = url
         self.content = content
+        self.body = body
     }
 }
 
@@ -83,22 +86,40 @@ enum WebSearchService {
         }
     }
 
-    /// 검색 결과를 시스템 프롬프트 주입용 텍스트 블록으로 변환
+    /// 검색 결과를 시스템 프롬프트 주입용 텍스트 블록으로 변환 (인용 번호 포함, T-205)
     static func formatResults(_ results: [WebSearchResult], query: String) -> String {
         guard !results.isEmpty else { return "" }
         let items = results.enumerated().map { index, result -> String in
-            """
+            var block = """
             [\(index + 1)] \(result.title)
             출처: \(result.url)
             \(result.content)
             """
+            if let body = result.body, !body.isEmpty {
+                block += "\n〔본문〕\(body)"
+            }
+            return block
         }.joined(separator: "\n\n")
         return """
         ## 웹 검색 결과
-        아래는 "\(query)"에 대한 실시간 웹 검색 결과입니다. 답변 시 이 정보를 참고하고, 인용한 출처 번호를 함께 표시하세요. 검색 결과와 모순되는 최신 정보가 있다면 검색 결과를 우선하세요.
+        아래는 "\(query)"에 대한 실시간 웹 검색 결과입니다. 답변 시 이 정보를 참고하고, 인용한 출처 번호([n])를 함께 표시하세요. 검색 결과와 모순되는 최신 정보가 있다면 검색 결과를 우선하세요.
 
         \(items)
         """
+    }
+
+    /// parse_link (T-205) — 각 결과 URL을 열어 본문을 추출해 첨부. 실패한 결과는 원본 스니펫 유지.
+    static func enrichWithBodies(_ results: [WebSearchResult], maxBodies: Int = 3) async -> [WebSearchResult] {
+        let candidates = results.prefix(maxBodies)
+        var updated = results
+        for (index, result) in updated.enumerated() {
+            guard candidates.contains(where: { $0.id == result.id }) else { continue }
+            guard let url = URL(string: result.url), WebSearchService.isSafeFetchURL(url) else { continue }
+            if let body = try? await WebSearchService.fetchURL(url, maxChars: 800) {
+                updated[index].body = body
+            }
+        }
+        return updated
     }
 
     // MARK: - Tavily

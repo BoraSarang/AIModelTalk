@@ -159,11 +159,13 @@ enum ToolLoopService {
                     throw WebSearchError.emptyQuery
                 }
                 let key = AppSettings.shared.tavilyAPIKey
-                let results = try await WebSearchService.search(query: query, apiKey: key, maxResults: 5)
+                let baseResults = try await WebSearchService.search(query: query, apiKey: key, maxResults: 5)
+                // T-205 parse_link — 상위 결과 본문 추출 후 인용 번호와 함께 반환
+                let results = await WebSearchService.enrichWithBodies(baseResults)
                 let text = results.isEmpty
                     ? "검색 결과가 없습니다."
                     : WebSearchService.formatResults(results, query: query)
-                DebugLogger.shared.info("TOOL", "[FEATURE] 내장 도구 web_search 실행: '\(query)' → \(results.count)건")
+                DebugLogger.shared.info("TOOL", "[FEATURE] 내장 도구 web_search 실행: '\(query)' → \(results.count)건 (본문 \(results.filter { $0.body != nil }.count)건)")
                 return ExecutionRecord(
                     toolName: name, argumentsJSON: call.argumentsJSON,
                     resultPreview: text, isError: false,
