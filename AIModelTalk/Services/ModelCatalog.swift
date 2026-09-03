@@ -1,0 +1,555 @@
+import Foundation
+
+// MARK: - 갱신 리포트 (v1.7.1 T-58)
+
+struct ProviderRefreshResult {
+    enum Status { case ok, failed, skipped }
+
+    let provider: Provider
+    let status: Status
+    var addedCount = 0
+    var removedCount = 0
+}
+
+struct CatalogRefreshReport {
+    let results: [ProviderRefreshResult]
+
+    var addedTotal: Int { results.reduce(0) { $0 + $1.addedCount } }
+    var removedTotal: Int { results.reduce(0) { $0 + $1.removedCount } }
+    var failedProviderNames: [String] {
+        results.filter { $0.status == .failed }.map { $0.provider.rawValue }
+    }
+
+    /// 사용자 노출용 요약 문구 — 설정 하단 버튼 바에 표시
+    static func summaryText(_ results: [ProviderRefreshResult]) -> String {
+        guard !results.isEmpty, !results.allSatisfy({ $0.status == .skipped }) else {
+            return "API 키가 설정된 공급자가 없습니다"
+        }
+        let added = results.reduce(0) { $0 + $1.addedCount }
+        let removed = results.reduce(0) { $0 + $1.removedCount }
+        let failed = results.filter { $0.status == .failed }.map { $0.provider.rawValue }
+        if added == 0 && removed == 0 && failed.isEmpty { return "변경 없음" }
+        var parts = ["추가 \(added)개", "제거 \(removed)개"]
+        if !failed.isEmpty { parts.append("실패: \(failed.joined(separator: ", "))") }
+        return parts.joined(separator: " · ")
+    }
+}
+
+@MainActor
+final class ModelCatalog: ObservableObject {
+    static let shared = ModelCatalog()
+
+    @Published var models: [AIModel] = []
+
+    /// 모델 사용 플래그 ("공급자:id" → 사용 여부). 미등록 키는 true 취급 (v1.7 T-53)
+    @Published var enabledOverrides: [String: Bool] = [:]
+
+    private let userDefaultsKey = "customModels"
+    private let overridesKey = "modelEnabledOverrides"
+    /// 갱신으로 받아온 모델 ID 스냅샷(공급자별) — 원격에서 사라진 모델 제거 감지용 (v1.7.1 D2)
+    private let refreshedIDsKey = "refreshedModelIDs"
+    private var refreshedIDs: [String: [String]] = [:]
+    private let defaults: UserDefaults
+
+    // MARK: - 정적 기본 목록 (무료 전용)
+    static let defaultModels: [AIModel] = [
+        // NVIDIA
+        AIModel(id: "openai/gpt-oss-20b", provider: .nvidia, displayName: "GPT-OSS-20B", contextLimit: 131_072),
+        AIModel(id: "nvidia/llama-3.3-nemotron-super-49b-v1.5", provider: .nvidia, displayName: "Nemotron Super 49B", contextLimit: 131_072),
+        AIModel(id: "nvidia/llama-3.1-8b-instruct", provider: .nvidia, displayName: "Llama 3.1 8B", contextLimit: 131_072),
+        // OpenRouter (":free" suffix)
+        AIModel(id: "google/gemini-2.5-flash-preview:free", provider: .openRouter, displayName: "Gemini 2.5 Flash", contextLimit: 1_048_576),
+        AIModel(id: "deepseek/deepseek-chat-v3-0324:free", provider: .openRouter, displayName: "DeepSeek V3", contextLimit: 128_000),
+        AIModel(id: "meta-llama/llama-4-maverick:free", provider: .openRouter, displayName: "Llama 4 Maverick", contextLimit: 1_048_576),
+        AIModel(id: "qwen/qwen3-235b-a22b:free", provider: .openRouter, displayName: "Qwen3 235B", contextLimit: 128_000),
+        // Groq
+        AIModel(id: "llama-3.3-70b-versatile", provider: .groq, displayName: "Llama 3.3 70B", contextLimit: 131_072),
+        AIModel(id: "gemma2-9b-it", provider: .groq, displayName: "Gemma 2 9B", contextLimit: 8_192),
+        AIModel(id: "mixtral-8x7b-32768", provider: .groq, displayName: "Mixtral 8x7B", contextLimit: 32_768),
+        // Gemini (2026-08 기준 GA 안정판 — 구모델은 신규 계정에서 404)
+        AIModel(id: "gemini-3.6-flash", provider: .gemini, displayName: "Gemini 3.6 Flash", contextLimit: 1_048_576),
+        AIModel(id: "gemini-3.5-flash-lite", provider: .gemini, displayName: "Gemini 3.5 Flash-Lite", contextLimit: 1_048_576),
+        // OpenAI / Anthropic (유료 — API 키 보유자용 대표 모델, v2.1 T-93 무료전용 정책 폐기)
+        AIModel(id: "gpt-4o-mini", provider: .openAI, displayName: "GPT-4o mini", isFree: false, contextLimit: 128_000),
+        AIModel(id: "gpt-4o", provider: .openAI, displayName: "GPT-4o", isFree: false, contextLimit: 128_000),
+        AIModel(id: "claude-haiku-4-5", provider: .anthropic, displayName: "Claude Haiku 4.5", isFree: false, contextLimit: 200_000),
+        AIModel(id: "claude-sonnet-4-5", provider: .anthropic, displayName: "Claude Sonnet 4.5", isFree: false, contextLimit: 200_000),
+        // OpenCode Zen (게이트웨이, OpenAI 호환 chat/completions — 무료 먼저, 유료는 isFree: false)
+        AIModel(id: "opencode/big-pickle", provider: .opencode, displayName: "Big Pickle (무료)", contextLimit: 128_000),
+        AIModel(id: "opencode/nemotron-3-ultra-free", provider: .opencode, displayName: "Nemotron 3 Ultra (무료)", contextLimit: 128_000),
+        AIModel(id: "opencode/mimo-v2.5-free", provider: .opencode, displayName: "MiMo V2.5 (무료)", contextLimit: 128_000),
+        AIModel(id: "opencode/deepseek-v4-flash", provider: .opencode, displayName: "DeepSeek V4 Flash", isFree: false, contextLimit: 128_000),
+        AIModel(id: "opencode/deepseek-v4-pro", provider: .opencode, displayName: "DeepSeek V4 Pro", isFree: false, contextLimit: 128_000),
+        // DeepSeek (공식 API — 유료)
+        AIModel(id: "deepseek-chat", provider: .deepseek, displayName: "DeepSeek Chat", isFree: false, contextLimit: 128_000),
+        AIModel(id: "deepseek-reasoner", provider: .deepseek, displayName: "DeepSeek Reasoner", isFree: false, contextLimit: 64_000),
+        // Ollama (로컬 무료 모델 — 대표 모델만 정적 등록, 실제 목록은 /api/tags에서 동기화)
+        AIModel(id: "llama3.2:latest", provider: .ollama, displayName: "Llama 3.2", contextLimit: 128_000),
+        AIModel(id: "gemma2:2b", provider: .ollama, displayName: "Gemma 2 2B", contextLimit: 8_192),
+        AIModel(id: "qwen2.5:7b", provider: .ollama, displayName: "Qwen 2.5 7B", contextLimit: 128_000),
+        AIModel(id: "phi3.5:latest", provider: .ollama, displayName: "Phi 3.5", contextLimit: 128_000),
+        // Apple Intelligence (온디바이스 무료 — macOS 26+ FoundationModels. 미지원 환경은 UI에서 섹션 자동 숨김, v2.1 T-102)
+        // 컨텍스트 상한 비공개 — 보수값 사용. 실제 응답은 AppleIntelligenceClient가 세션으로 처리
+        AIModel(id: "apple-intelligence", provider: .appleIntelligence, displayName: "Apple Intelligence", contextLimit: 8_192),
+    ]
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        models = Self.defaultModels
+        loadCustomModels()
+        loadEnabledOverrides()
+    }
+
+    // MARK: - 모델 추가/삭제
+    func addModel(_ model: AIModel) {
+        guard !models.contains(where: { $0.id == model.id && $0.provider == model.provider }) else { return }
+        models.append(model)
+        saveCustomModels()
+        DebugLogger.shared.info("MODEL", "모델 추가: \(model.id) (\(model.provider.rawValue))")
+    }
+
+    func removeModel(_ model: AIModel) {
+        models.removeAll { $0.id == model.id && $0.provider == model.provider }
+        saveCustomModels()
+        DebugLogger.shared.info("MODEL", "모델 삭제: \(model.id) (\(model.provider.rawValue))")
+    }
+
+    func removeModels(for provider: Provider) {
+        models.removeAll { $0.provider == provider }
+        saveCustomModels()
+        DebugLogger.shared.info("MODEL", "공급자 모델 전체 삭제: \(provider.rawValue)")
+    }
+
+    // MARK: - 엔트리 단위 조회 (v1.9 T-85 — 내장 공급자 + 커스텀 엔드포인트)
+
+    /// 엔트리(내장 공급자 또는 커스텀 엔드포인트)에 속한 모델 목록
+    func models(in entry: ProviderEntry, fallbackFirstEndpointID: UUID? = nil) -> [AIModel] {
+        models.filter { $0.belongs(to: entry, fallbackFirstEndpointID: fallbackFirstEndpointID) }
+    }
+
+    func visibleModels(in entry: ProviderEntry, fallbackFirstEndpointID: UUID? = nil) -> [AIModel] {
+        models(in: entry, fallbackFirstEndpointID: fallbackFirstEndpointID).filter { isEnabled($0) }
+    }
+
+    /// 엔트리 단위 일괄 토글 — "모두 사용/해제" 버튼용
+    func setAllEnabled(_ enabled: Bool, in entry: ProviderEntry, fallbackFirstEndpointID: UUID? = nil) {
+        let targets = models.filter { $0.belongs(to: entry, fallbackFirstEndpointID: fallbackFirstEndpointID) }
+        var updated = enabledOverrides
+        for model in targets {
+            updated[overrideKey(model)] = enabled
+        }
+        enabledOverrides = updated
+        defaults.set(enabledOverrides, forKey: overridesKey)
+        DebugLogger.shared.info("MODEL", "\(entry.title) 모델 전체 \(enabled ? "사용" : "해제"): \(targets.count)개")
+    }
+
+    // MARK: - 모델 사용 플래그 (v1.7 T-53)
+
+    func isEnabled(_ model: AIModel) -> Bool {
+        enabledOverrides[overrideKey(model)] ?? true
+    }
+
+    func setEnabled(_ model: AIModel, _ enabled: Bool) {
+        enabledOverrides[overrideKey(model)] = enabled
+        defaults.set(enabledOverrides, forKey: overridesKey)
+        DebugLogger.shared.info("MODEL", "모델 사용 \(enabled ? "ON" : "OFF"): \(model.id)")
+    }
+
+    /// 피커 노출용 — 비활성 모델은 목록에서 완전 숨김 (v1.7 D4)
+    func visibleModels(for provider: Provider) -> [AIModel] {
+        models(for: provider).filter { isEnabled($0) }
+    }
+
+    /// 공급자 전체 모델 일괄 토글 (v1.7.1 T-61)
+    func setAllEnabled(_ enabled: Bool, for provider: Provider) {
+        let targets = models.filter { $0.provider == provider }
+        var updated = enabledOverrides
+        for model in targets {
+            updated[overrideKey(model)] = enabled
+        }
+        enabledOverrides = updated
+        defaults.set(enabledOverrides, forKey: overridesKey)
+        DebugLogger.shared.info("MODEL", "\(provider.rawValue) 모델 전체 \(enabled ? "사용" : "해제"): \(targets.count)개")
+    }
+
+    private func overrideKey(_ model: AIModel) -> String {
+        "\(model.provider.rawValue):\(model.id)"
+    }
+
+    private func loadEnabledOverrides() {
+        guard let dict = defaults.dictionary(forKey: overridesKey) as? [String: Bool] else { return }
+        enabledOverrides = dict
+    }
+
+    // MARK: - 사용자 지정 모델 저장/로드
+    private func saveCustomModels() {
+        let customModels = models.filter { model in
+            !Self.defaultModels.contains { $0.id == model.id && $0.provider == model.provider }
+        }
+        if let data = try? JSONEncoder().encode(customModels) {
+            defaults.set(data, forKey: userDefaultsKey)
+        }
+    }
+
+    private func loadCustomModels() {
+        guard let data = defaults.data(forKey: userDefaultsKey),
+              let customModels = try? JSONDecoder().decode([AIModel].self, from: data) else { return }
+        for model in customModels {
+            if !models.contains(where: { $0.id == model.id && $0.provider == model.provider }) {
+                models.append(model)
+            }
+        }
+    }
+
+    // MARK: - 서버 새로고침 (키 설정 공급자만 · v1.7.1 T-58 리포트+로그)
+
+    @discardableResult
+    func refresh() async -> CatalogRefreshReport {
+        DebugLogger.shared.info("MODEL", "모델 목록 갱신 시작")
+        async let openRouter = refreshOpenAICompatible(.openRouter) { item, id in
+            (item["name"] as? String) ?? id
+        } filter: { $0.hasSuffix(":free") }
+        async let groq = refreshOpenAICompatible(.groq) { item, id in
+            (item["owned_by"] as? String).map { "\(id) (\($0))" } ?? id
+        }
+        async let nvidia = refreshOpenAICompatible(.nvidia) { item, id in
+            (item["owned_by"] as? String).map { "\(id) (\($0))" } ?? id
+        }
+        async let gemini = refreshGemini()
+        async let ollama = refreshOllama()
+        async let custom = refreshCustomEndpoints()
+        // v2.1 T-93 — 신규 OpenAI 호환 공급자 3종 (키 없으면 자동 skipped)
+        async let openAIOfficial = refreshOpenAICompatible(.openAI) { _, id in id }
+        async let vercel = refreshOpenAICompatible(.vercelGateway) { item, id in
+            (item["owned_by"] as? String).map { "\(id) (\($0))" } ?? id
+        }
+        async let tokenRouter = refreshOpenAICompatible(.tokenRouter) { _, id in id }
+
+        let results = await [openRouter, groq, nvidia, gemini, ollama, custom,
+                             openAIOfficial, vercel, tokenRouter]
+        let report = CatalogRefreshReport(results: results)
+        let failed = report.failedProviderNames
+        DebugLogger.shared.info(
+            "MODEL",
+            "모델 목록 갱신 완료 — 추가 \(report.addedTotal)개 / 제거 \(report.removedTotal)개"
+                + (failed.isEmpty ? "" : " / 실패: \(failed.joined(separator: ", "))")
+        )
+        return report
+    }
+
+    /// Ollama 로컬 서버 모델 목록 갱신 (v1.8 T-70d)
+    private func refreshOllama() async -> ProviderRefreshResult {
+        let baseURL = AppSettings.shared.ollamaBaseURL.isEmpty ? Provider.ollama.baseURL : AppSettings.shared.ollamaBaseURL
+        guard let url = URL(string: "\(baseURL)/api/tags") else {
+            DebugLogger.shared.debug("MODEL", "Ollama: BaseURL 미설정 — 건너뜀")
+            return ProviderRefreshResult(provider: .ollama, status: .skipped)
+        }
+
+        DebugLogger.shared.info("MODEL", "Ollama: 모델 목록 조회 중… (\(baseURL))")
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let list = json["models"] as? [[String: Any]] else {
+                DebugLogger.shared.warn("MODEL", "E-MAC-OLLAMA-1001 Ollama 응답 파싱 실패")
+                return ProviderRefreshResult(provider: .ollama, status: .failed)
+            }
+
+            var remoteModels: [AIModel] = []
+            for item in list {
+                guard let name = item["name"] as? String else { continue }
+                let displayName = name.replacingOccurrences(of: ":latest", with: "")
+                remoteModels.append(AIModel(id: name, provider: .ollama, displayName: displayName, isFree: true, contextLimit: 128_000))
+            }
+            return mergeRemoteModels(remoteModels, provider: .ollama)
+        } catch {
+            DebugLogger.shared.warn("MODEL", "E-MAC-OLLAMA-1001 Ollama 서버 접속 실패: \(error.localizedDescription)")
+            return ProviderRefreshResult(provider: .ollama, status: .failed)
+        }
+    }
+
+    /// 커스텀 엔드포인트 /models 동기화 — 등록된 모든 엔드포인트 순회, 복합 ID 모델로 편입 (v1.9 T-92)
+    /// 추가 전용(원격 제거 없음): 수동 추가 모델 보호. 엔드포인트 삭제 시 소속 모델은 함께 정리됨(T-84)
+    private func refreshCustomEndpoints() async -> ProviderRefreshResult {
+        let endpoints = CustomEndpointStore(defaults: CustomEndpointStore.suiteDefaults).endpoints
+            .filter { !$0.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !endpoints.isEmpty else {
+            DebugLogger.shared.debug("MODEL", "커스텀: 등록된 엔드포인트 없음 — 건너뜀")
+            return ProviderRefreshResult(provider: .custom, status: .skipped)
+        }
+
+        var addedTotal = 0
+        var removedTotal = 0
+        var failedNames: [String] = []
+
+        for endpoint in endpoints {
+            // URL 정규화 — 연결 테스트와 동일 규칙 (스킴 보정 + trailing slash 제거)
+            var base = endpoint.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !base.hasPrefix("http://") && !base.hasPrefix("https://") {
+                let isLocal = base.hasPrefix("localhost") || base.hasPrefix("127.0.0.1")
+                base = (isLocal ? "http://" : "https://") + base
+            }
+            while base.hasSuffix("/") { base = String(base.dropLast()) }
+
+            guard let url = URL(string: "\(base)/models") else {
+                DebugLogger.shared.warn("MODEL", "[E-MAC-VALID-1003] 커스텀 '\(endpoint.name)' URL 형식 오류: \(base)")
+                failedNames.append(endpoint.name)
+                continue
+            }
+
+            var req = URLRequest(url: url)
+            req.timeoutInterval = 15
+            if !endpoint.apiKey.isEmpty {
+                req.setValue("Bearer \(endpoint.apiKey)", forHTTPHeaderField: "Authorization")
+            }
+
+            DebugLogger.shared.info("MODEL", "커스텀 '\(endpoint.name)': 모델 목록 조회 중… (\(base))")
+            guard let (data, _) = try? await URLSession.shared.data(for: req),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let list = json["data"] as? [[String: Any]] else {
+                DebugLogger.shared.warn("MODEL", "[E-MAC-NET-1004] 커스텀 '\(endpoint.name)' 모델 목록 조회 실패")
+                failedNames.append(endpoint.name)
+                continue
+            }
+
+            let ids = list.compactMap { $0["id"] as? String }
+            let result = syncCustomEndpoint(ids, endpoint: endpoint)
+            addedTotal += result.added
+            removedTotal += result.removed
+            DebugLogger.shared.info("MODEL", "커스텀 '\(endpoint.name)': 원격 \(ids.count)개 기준 신규 \(result.added)개 / 제거 \(result.removed)개")
+        }
+
+        let status: ProviderRefreshResult.Status = failedNames.count == endpoints.count ? .failed : .ok
+        return ProviderRefreshResult(provider: .custom, status: status, addedCount: addedTotal, removedCount: removedTotal)
+    }
+
+    /// 단일 엔드포인트 동기화 — 스테일 제거(스냅샷 기준) + 신규 추가 + 스냅샷 갱신 (v2.1 T-98)
+    /// 스냅샷은 동기화 완료 시점의 해당 엔드포인트 전체 모델 ID — 이후 사용자가 수동 추가한 모델도 다음 회차부터 자동 보호된다.
+    @discardableResult
+    func syncCustomEndpoint(_ remoteIDs: [String], endpoint: CustomEndpoint) -> (added: Int, removed: Int) {
+        let snapshotKey = "custom:\(endpoint.id.uuidString)"
+        let idPrefix = "\(endpoint.id.uuidString):"
+
+        // 1) 스테일 제거 — 이전 갱신 스냅샷에 있었고 이번 원격 목록에 없는 모델만
+        let previousIDs = Set(refreshedIDs[snapshotKey] ?? [])
+        let currentRemoteIDs = Set(remoteIDs.compactMap { raw -> String? in
+            guard !raw.isEmpty else { return nil }
+            return CustomEndpoint.compositeID(endpointID: endpoint.id, modelID: raw)
+        })
+        var removed = 0
+        for staleID in previousIDs.subtracting(currentRemoteIDs).sorted() {
+            if models.contains(where: { $0.provider == .custom && $0.id == staleID }) {
+                models.removeAll { $0.provider == .custom && $0.id == staleID }
+                removed += 1
+                DebugLogger.shared.info("MODEL", "커스텀 '\(endpoint.name)': 원격에서 사라져 제거 — \(staleID)")
+            }
+        }
+
+        // 2) 신규 추가 — 중복 복합 ID 건너뜀
+        var added = 0
+        for rawID in remoteIDs where !rawID.isEmpty {
+            let composite = CustomEndpoint.compositeID(endpointID: endpoint.id, modelID: rawID)
+            if models.contains(where: { $0.provider == .custom && $0.id == composite }) { continue }
+            models.append(AIModel(
+                id: composite,
+                provider: .custom,
+                displayName: "\(rawID) (\(endpoint.name))",
+                contextLimit: 128_000
+            ))
+            added += 1
+        }
+
+        // 3) 스냅샷 갱신 — 원격 ID만 저장. 사용자의 수동 추가 모델은 스냅샷 밖이라 영구 보호된다.
+        refreshedIDs[snapshotKey] = Array(currentRemoteIDs).sorted()
+        defaults.set(refreshedIDs, forKey: refreshedIDsKey)
+
+        if added > 0 || removed > 0 {
+            saveCustomModels()
+            DebugLogger.shared.info("MODEL", "[FEATURE] 커스텀 동기화 실행됨: '\(endpoint.name)' +\(added)/-\(removed)")
+        }
+        return (added, removed)
+    }
+
+    /// 엔드포인트 삭제 시 동기화 스냅샷 정리 (deleteCustomEndpoint 경유)
+    func clearCustomSyncSnapshot(endpointID: UUID) {
+        let key = "custom:\(endpointID.uuidString)"
+        refreshedIDs.removeValue(forKey: key)
+        defaults.set(refreshedIDs, forKey: refreshedIDsKey)
+    }
+
+    /// OpenAI 호환(/models, Bearer 인증) 공급자 공용 갱신 — OpenRouter/Groq/NVIDIA
+    private func refreshOpenAICompatible(
+        _ provider: Provider,
+        displayName: @escaping ([String: Any], String) -> String,
+        filter: ((String) -> Bool)? = nil
+    ) async -> ProviderRefreshResult {
+        let key = AppSettings.shared.apiKey(for: provider)
+        guard !key.isEmpty else {
+            DebugLogger.shared.debug("MODEL", "\(provider.rawValue): API 키 미설정 — 건너뜀")
+            return ProviderRefreshResult(provider: provider, status: .skipped)
+        }
+
+        guard let url = URL(string: "\(provider.baseURL)/models") else {
+            return ProviderRefreshResult(provider: provider, status: .failed)
+        }
+        DebugLogger.shared.info("MODEL", "\(provider.rawValue): 모델 목록 조회 중…")
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let list = json["data"] as? [[String: Any]] else {
+            DebugLogger.shared.warn("MODEL", "E-MAC-NET-1004 \(provider.rawValue) 모델 목록 조회 실패")
+            return ProviderRefreshResult(provider: provider, status: .failed)
+        }
+
+        var remoteModels: [AIModel] = []
+        for item in list {
+            guard let id = item["id"] as? String else { continue }
+            if let filter, !filter(id) { continue }
+            remoteModels.append(AIModel(id: id, provider: provider, displayName: displayName(item, id)))
+        }
+        return mergeRemoteModels(remoteModels, provider: provider)
+    }
+
+    /// 원격 목록 병합 — 신규 추가 + 갱신 유래 모델 중 원격에서 사라진 것만 제거(정적/수동 추가는 보호)
+    private func mergeRemoteModels(_ remote: [AIModel], provider: Provider) -> ProviderRefreshResult {
+        let existingIDs = Set(models.filter { $0.provider == provider }.map(\.id))
+        let newOnes = remote.filter { !existingIDs.contains($0.id) }
+        models.append(contentsOf: newOnes)
+
+        let previousIDs = Set(refreshedIDs[provider.rawValue] ?? [])
+        let remoteIDs = Set(remote.map(\.id))
+        var removedCount = 0
+        for staleID in previousIDs.subtracting(remoteIDs).sorted()
+        where !Self.defaultModels.contains(where: { $0.id == staleID && $0.provider == provider }) {
+            models.removeAll { $0.provider == provider && $0.id == staleID }
+            removedCount += 1
+            DebugLogger.shared.info("MODEL", "\(provider.rawValue): 원격에서 사라져 제거 — \(staleID)")
+        }
+
+        refreshedIDs[provider.rawValue] = Array(remoteIDs).sorted()
+        defaults.set(refreshedIDs, forKey: refreshedIDsKey)
+        saveCustomModels()
+
+        if newOnes.isEmpty && removedCount == 0 {
+            DebugLogger.shared.info("MODEL", "\(provider.rawValue): 갱신 완료 — 변경 없음 (원격 \(remote.count)개)")
+        } else {
+            DebugLogger.shared.info("MODEL", "\(provider.rawValue): 갱신 완료 — 신규 \(newOnes.count)개 / 제거 \(removedCount)개 (원격 \(remote.count)개)")
+            if !newOnes.isEmpty {
+                let names = newOnes.prefix(10).map(\.id).joined(separator: ", ")
+                DebugLogger.shared.info("MODEL", "\(provider.rawValue) 신규: \(names)\(newOnes.count > 10 ? " 외 \(newOnes.count - 10)개" : "")")
+            }
+        }
+        return ProviderRefreshResult(provider: provider, status: .ok, addedCount: newOnes.count, removedCount: removedCount)
+    }
+
+    /// Gemini 공식 ListModels — generateContent 지원 모델만 수집 (v1.7 T-52, v1.7.1부터 refresh()에 정식 편입)
+    private func refreshGemini() async -> ProviderRefreshResult {
+        let key = AppSettings.shared.apiKey(for: .gemini)
+        guard !key.isEmpty else {
+            DebugLogger.shared.debug("MODEL", "Gemini: API 키 미설정 — 건너뜀")
+            return ProviderRefreshResult(provider: .gemini, status: .skipped)
+        }
+        guard var comps = URLComponents(string: "\(Provider.gemini.baseURL)/v1beta/models") else {
+            return ProviderRefreshResult(provider: .gemini, status: .failed)
+        }
+        comps.queryItems = [
+            URLQueryItem(name: "key", value: key),
+            URLQueryItem(name: "pageSize", value: "1000"),
+        ]
+        guard let url = comps.url,
+              let (data, _) = try? await URLSession.shared.data(from: url) else {
+            DebugLogger.shared.warn("MODEL", "E-MAC-NET-1004 Gemini 모델 목록 조회 실패")
+            return ProviderRefreshResult(provider: .gemini, status: .failed)
+        }
+
+        var geminiModels: [AIModel] = []
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let list = json["models"] as? [[String: Any]] {
+            // 채팅에 못 쓰는 계열 제외 + generateContent 미지원 모델 제외
+            let excludedKeywords = ["embedding", "aqa", "imagen", "veo", "tts"]
+            for item in list {
+                guard let name = item["name"] as? String else { continue } // "models/gemini-xxx"
+                let id = name.split(separator: "/").last.map(String.init) ?? name
+                if excludedKeywords.contains(where: { id.lowercased().contains($0) }) { continue }
+                if let methods = item["supportedGenerationMethods"] as? [String],
+                   !methods.contains("generateContent") { continue }
+                let displayName = (item["displayName"] as? String) ?? id
+                geminiModels.append(AIModel(id: id, provider: .gemini, displayName: displayName))
+            }
+            DebugLogger.shared.info("MODEL", "Gemini: 모델 목록 조회 중… → \(list.count)개 수신")
+        } else {
+            DebugLogger.shared.warn("MODEL", "E-MAC-NET-1004 Gemini 응답 파싱 실패")
+            return ProviderRefreshResult(provider: .gemini, status: .failed)
+        }
+        return mergeRemoteModels(geminiModels, provider: .gemini)
+    }
+
+    // MARK: - 헬퍼
+    func models(for provider: Provider) -> [AIModel] {
+        models.filter { $0.provider == provider }
+    }
+
+    /// 429(rate 한도) 자동 폴백용 무료 활성 모델 우선순위 (v3.4 T-162)
+    /// Groq → NVIDIA → Gemini → OpenRouter 순. 기본 모델 폴백과 요청 중 폴백 모두에 사용한다.
+    /// - `isFree`가 아니거나, 사용 해제(enabledOverrides=false)된 모델은 제외
+    /// - `excluding`에 지정한 모델은 제외(현재 rate 실패 모델을 건너뛰기)
+    static let fallbackPriority: [(id: String, provider: Provider)] = [
+        ("llama-3.3-70b-versatile", .groq),
+        ("openai/gpt-oss-20b", .nvidia),
+        ("gemini-3.6-flash", .gemini),
+        ("google/gemini-2.5-flash-preview:free", .openRouter),
+        ("deepseek/deepseek-chat-v3-0324:free", .openRouter),
+    ]
+
+    /// 우선순위 리스트에서 활성화된 무료 모델을 순서대로 반환 (발견 시 즉시 .first 사용 가능)
+    static func freeFallbackCandidates(excluding current: AIModel? = nil) -> [AIModel] {
+        let catalog = ModelCatalog.shared
+        return fallbackPriority.compactMap { entry in
+            catalog.models.first { $0.id == entry.id && $0.provider == entry.provider }
+        }
+        .filter { $0.isFree }
+        .filter { catalog.isEnabled($0) }
+        .filter { candidate in
+            guard let current else { return true }
+            return !(candidate.provider == current.provider && candidate.id == current.id)
+        }
+    }
+
+    /// 기본 폴백 모델 — 우선순위 첫 활성 무료 모델, 없으면 등록 목록 첫 모델
+    static func primaryFallbackModel() -> AIModel {
+        freeFallbackCandidates().first ?? defaultModels.first!
+    }
+
+    /// 공급자 섹션 내 무료 모델을 상단에 배치하는 안정 정렬 (v3.1)
+    /// Swift의 sorted(by:)는 안정성이 보장되지 않으므로 원래 인덱스로 동률을 끊어 순서를 보존한다.
+    static func freeFirst(_ input: [AIModel]) -> [AIModel] {
+        input.enumerated()
+            .sorted { lhs, rhs in
+                if lhs.element.isFree != rhs.element.isFree {
+                    return lhs.element.isFree && !rhs.element.isFree
+                }
+                return lhs.offset < rhs.offset
+            }
+            .map(\.element)
+    }
+
+    func model(id: String, provider: Provider) -> AIModel? {
+        models.first { $0.id == id && $0.provider == provider }
+    }
+
+    // MARK: - 표시용 라벨 헬퍼
+    static func label(for provider: Provider, modelID: String) -> String {
+        if let model = ModelCatalog.shared.model(id: modelID, provider: provider) {
+            return model.label
+        }
+        let rawID = modelID.split(separator: "/").last.map(String.init) ?? modelID
+        return "\(provider.rawValue) \(rawID)"
+    }
+}
+
+extension AIModel {
+    var label: String {
+        let rawID = id.split(separator: "/").last.map(String.init) ?? id
+        return "\(provider.rawValue) \(displayName) (\(rawID))"
+    }
+}

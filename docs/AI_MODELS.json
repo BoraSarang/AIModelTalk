@@ -1,0 +1,41 @@
+{
+  "version": "1.0.0",
+  "language_lock": {
+    "response": "ko",
+    "reasoning": "ko",
+    "enforced": true
+  },
+  "models": {
+    "chat": {
+      "model": "auto",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "prompt_version": "chat_v1.0"
+    },
+    "vision": {
+      "model": "gemini-1.5-flash",
+      "temperature": 0.2,
+      "prompt_version": "vision_v1.0",
+      "vision_support": true
+    }
+  },
+  "platforms": {
+    "macos": {
+      "model": "chat",
+      "perf_budget": {
+        "cold_start_ms": 1500,
+        "memory_mb": 300,
+        "frame_rate": 60
+      }
+    }
+  },
+  "cache_policy": {
+    "enabled": false,
+    "ttl_days": 7,
+    "hit_rate_target": 0.7
+  },
+  "cost_guard": {
+    "max_cost_per_task_usd": 1.0,
+    "alert_at_usd": 0.5
+  }
+}

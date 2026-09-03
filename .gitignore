@@ -1,0 +1,42 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 세션 로그
+.agent/
+
+# Xcode (xcodegen으로 빌드)
+DerivedData/
+*.xcodeproj/
+build/
+
+# 시크릿/환경변수
+.env
+.env.local
+.env.*.local
+
+#바이너리
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# 코드 커버리지
+*.profraw
+
+# CocoaPods/Packages
+Packages/
+*.xcworkspace
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# 린트/포맷
+.swiftlint.yml
+
+# IDE
+.idea/
+*.swp
+*~

@@ -1,0 +1,56 @@
+name: AIModelTalk
+options:
+  bundleIdPrefix: com.borasarang
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  knownRegions:
+    - en
+    - ko
+    - Base
+targets:
+  AIModelTalk:
+    type: application
+    platform: macOS
+    sources:
+      - AIModelTalk
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.borasarang.AIModelTalk
+        MARKETING_VERSION: "0.1.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SWIFT_VERSION: "5.9"
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_LANGUAGE: en
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSMainStoryboardFile: ""
+        INFOPLIST_KEY_CFBundleDisplayName: "AIModelTalk"
+        INFOPLIST_KEY_CFBundleName: "AIModelTalk"
+    info:
+      path: AIModelTalk/Info.plist
+      properties:
+        LSApplicationCategoryType: public.app-category.productivity
+        NSHumanReadableCopyright: ""
+        CFBundleDisplayName: "AIModelTalk"
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+  AIModelTalkTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - AIModelTalkTests
+    dependencies:
+      - target: AIModelTalk
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.borasarang.AIModelTalkTests
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SWIFT_VERSION: "5.9"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+        DEVELOPMENT_LANGUAGE: en
+        GENERATE_INFOPLIST_FILE: YES
