@@ -71,6 +71,11 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var memoryItems: [MemoryItem] = []
     private var memoryStore = MemoryStore(defaults: .standard)
 
+    // MARK: - 프롬프트 템플릿 (T-208)
+
+    @Published var promptTemplates: [PromptTemplate] = []
+    private var templateStore = PromptTemplateStore(defaults: .standard)
+
     private let context: ModelContext
     /// 세션별 병렬 스트리밍 수명주기 관리 (v3.0 T-002)
     private let streamManager = StreamManager.shared
@@ -106,11 +111,13 @@ final class ChatViewModel: ObservableObject {
     init(context: ModelContext, defaults: UserDefaults = .standard) {
         self.context = context
         self.memoryStore = MemoryStore(defaults: defaults)
+        self.templateStore = PromptTemplateStore(defaults: defaults)
         commonInit()
     }
 
     private func commonInit() {
         loadMemory()
+        loadTemplates()
         loadSessions()
         purgeExpiredTrash()
         DebugLogger.shared.info("APP", "세션 로드 완료: \(sessions.count)개")
@@ -253,6 +260,46 @@ final class ChatViewModel: ObservableObject {
         memoryStore.items = list
         loadMemory()
         DebugLogger.shared.info("MEMORY", "[FEATURE] 기억 고정 토글됨")
+    }
+
+    /// 기억 듀레이션(영구/임시) 변경 (T-208) — 임시는 자동 정리 우선 대상
+    func setMemoryDurability(memoryID: UUID, to durability: MemoryDurability) {
+        var list = memoryItems
+        guard let index = list.firstIndex(where: { $0.id == memoryID }) else { return }
+        list[index].durability = durability
+        memoryStore.items = list
+        loadMemory()
+        DebugLogger.shared.info("MEMORY", "[FEATURE] 기억 내구성 변경 → \(durability.rawValue)")
+    }
+
+    // MARK: - 프롬프트 템플릿 (T-208)
+
+    func loadTemplates() {
+        promptTemplates = templateStore.templates
+    }
+
+    func saveTemplate(_ template: PromptTemplate) {
+        templateStore.upsert(template)
+        loadTemplates()
+        DebugLogger.shared.info("TEMPLATE", "[FEATURE] 프롬프트 템플릿 저장됨: '\(template.name)'")
+    }
+
+    func deleteTemplate(id: UUID) {
+        templateStore.remove(id: id)
+        loadTemplates()
+        DebugLogger.shared.info("TEMPLATE", "[FEATURE] 프롬프트 템플릿 삭제됨")
+    }
+
+    /// 템플릿을 입력창에 삽입 — placeholder는 변수 값으로 치환 후 커서 위치에 붙임 (T-208)
+    func applyTemplate(_ template: PromptTemplate, values: [String: String]) {
+        let rendered = template.applying(values: values)
+        if inputText.isEmpty {
+            inputText = rendered
+        } else {
+            if !inputText.hasSuffix("\n") { inputText += "\n" }
+            inputText += rendered
+        }
+        DebugLogger.shared.info("TEMPLATE", "[FEATURE] 프롬프트 템플릿 적용: '\(template.name)'")
     }
 
     // MARK: - 보조 모델 (v2.3 T-118)

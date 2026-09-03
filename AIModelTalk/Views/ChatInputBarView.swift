@@ -8,6 +8,7 @@ struct ChatInputBarView: View {
 
     @State private var keyMonitor: Any?
     @State private var showFileImporter = false
+    @State private var showTemplatePopover = false
 
     var body: some View {
         VStack(spacing: 8) {
@@ -53,6 +54,22 @@ struct ChatInputBarView: View {
                     ModelPickerPopover(viewModel: viewModel)
                     SkillPickerPopover(viewModel: viewModel)
                     SystemPromptPopover()
+                    // 프롬프트 템플릿 (T-208) — 저장한 지시문 삽입
+                    Button {
+                        showTemplatePopover.toggle()
+                    } label: {
+                        Image(systemName: "text.book.closed")
+                            .font(.system(size: 14))
+                            .foregroundStyle(showTemplatePopover ? Color.accentColor : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("프롬프트 템플릿 삽입 (⌘⇧T)")
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
+                    .popover(isPresented: $showTemplatePopover, arrowEdge: .bottom) {
+                        PromptTemplatePopoverView(viewModel: viewModel) {
+                            showTemplatePopover = false
+                        }
+                    }
                     // 이미지 첨부 버튼 (파일 선택)
                     Button {
                         showFileImporter = true
@@ -256,6 +273,16 @@ struct ChatInputBarView: View {
             Text("토큰")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            // T-208 토큰 예산 게이지 — 사용량 비율 막대 표시
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(color)
+                        .frame(width: max(2, geo.size.width * CGFloat(min(max(ratio, 0), 1))))
+                }
+            }
+            .frame(width: 60, height: 5)
             Text("\(used.formatted()) / \(limit.formatted())")
                 .font(.caption2.monospaced())
                 .foregroundStyle(color)

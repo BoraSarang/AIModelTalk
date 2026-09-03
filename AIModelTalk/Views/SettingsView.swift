@@ -6,6 +6,7 @@ enum SettingsTab: String, CaseIterable {
     case models = "모델"
     case mcp = "MCP"
     case skills = "스킬"
+    case memory = "메모리"
     case hotkey = "단축키"
 
     var icon: String {
@@ -15,6 +16,7 @@ enum SettingsTab: String, CaseIterable {
         case .models: return "cpu"
         case .mcp: return "externaldrive"
         case .skills: return "sparkles"
+        case .memory: return "brain"
         case .hotkey: return "keyboard"
         }
     }
@@ -30,6 +32,7 @@ struct SettingsView: View {
             tab(.models) { ModelsSettingsView() }
             tab(.mcp) { MCPSettingsView() }
             tab(.skills) { SkillSettingsView() }
+            tab(.memory) { MemorySettingsView() }
             tab(.hotkey) { HotkeySettingsView() }
         }
         .frame(minWidth: 700, minHeight: 480)
