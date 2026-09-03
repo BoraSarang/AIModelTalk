@@ -66,6 +66,14 @@ struct AIModelTalkApp: App {
         .windowToolbarStyle(.unified)
         .defaultSize(width: 1020, height: 660)
 
+        Window("평가 그리드", id: "eval") {
+            EvalView()
+                .appAccentTint(settings.accentColor)
+        }
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified)
+        .defaultSize(width: 900, height: 620)
+
         MenuBarExtra {
             MenuBarExtraContent()
         } label: {
@@ -133,6 +141,7 @@ struct MenuBarExtraContent: View {
         Button("비교 모드") { openWindow(id: "comparison") }
         Button("스플릿 채팅") { openWindow(id: "splitChat") }
         Button("벤치마크 랭킹") { openWindow(id: "benchmark") }
+        Button("평가 그리드") { openWindow(id: "eval") }
         Divider()
         SettingsLink {
             Text("설정…")
@@ -179,6 +188,11 @@ struct ModelTalkCommands: Commands {
                 openWindow(id: "benchmark")
             }
             .keyboardShortcut("b", modifiers: [.command, .shift])
+
+            Button("평가 그리드") {
+                openWindow(id: "eval")
+            }
+            .keyboardShortcut("e", modifiers: [.command, .shift])
 
             Divider()
 
