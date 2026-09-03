@@ -48,8 +48,16 @@
 - `ToolCalling.streamWithTools(...topP:maxTokens:)` 오버라이드 — 도구 없을 때 텍스트 스트림에 파라미터 전달(도구 포함 경로는 후속)
 - 실제 사용처(비교·채팅 편집 UI / 성능 메트릭 / "무엇을 보냈는지" 패널)는 후속 커밋에서 이 인프라를 연결
 
+### 추가 기능 — 비교 파라미터 편집 UI·성능 메트릭·보낸 요청 패널 (T-202, 커밋 fad17a7)
+- **`ModelParams` 공유 구조**: `temperature/topP/maxTokens` (모두 nil = 공급자 기본값), `hasAny` 판단
+- **비교 파라미터 전달**: `ComparisonService`를 단일 `temperature` → `ModelParams` 기반으로 승격, `run(context:systemPrompt:params:models:)` 오버로드 추가(이전 온도 시그니처 유지·비파괴) — `streamOne`이 `stream(...temperature:topP:maxTokens:)` 호출
+- **편집 UI**: `CompareModelPickerButton`에 temperature/topP/maxTokens 3단 편집 피커(각각 "기본값" 포함)
+- **성능 메트릭 확장**: 래인 헤더에 `tok/s`(실측 완료 토큰 ÷ 총 응답 시간) 추가
+- **"무엇을 보냈나" 패널**(`CompareOverlayView` 헤더 버튼): 파라미터 요약 · 시스템 프롬프트(400자) · 래인별 실측 토큰/시간 투명 표시
+- 채팅 단일 실행(`SendContext`)은 기존 온도 nil 기본값 유지 — 세션별 파라미터 저장은 후속(비교 래인별 우선)
+
 ### 검증
-- 단위 테스트 **282건 전부 통과**(신규 ModelParameterTests_T202 4건 포함) · 빌드 성공
+- 단위 테스트 **286건 전부 통과**(신규 ModelParameterTests_T202 8건 — ModelParams.hasAny/Equatable·tok/s 2건 추가) · 빌드 성공
 - UnavailableModelTests_V020 수정: `@MainActor` 격리 추가 + `summaryTextSuccessOnly`를 실제 구현("변경 없음")과 정합 + 빈키 사유 테스트 1건 추가
 
 ## [0.1.0] — 2026-09-03 (초기 릴리스)
