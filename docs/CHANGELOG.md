@@ -19,8 +19,17 @@
 ### 개선
 - `ComparisonResult` 래인·메시지 변환 시 실측 토큰 보존
 
+### 추가 기능 — EOL/모델없음 자동 처리 + 비교 UX 개선 (커밋 b584ab8, 697fb75)
+- **EOL(410)/모델없음(404) 자동 처리**: 채팅·비교·판정 실행에서 HTTP 410/404 응답 시 해당 모델을 공급자 무관으로 자동 비활성화(`disableUnavailableModel`) + 사용자 문구("모델이 목록에서 자동 제외됨"), 실패 원인 힌트(`failureHint`) 표기. (402 잔액·429 한도 등은 자동 비활성화하지 않음)
+- **Gemini 턴 보정**: 마지막 콘텐츠 role이 `model`이면 보조 `user` 턴("계속하세요") 추가 — 400 "Requests ending with a model turn" 예방
+- **갱신 리포트 사유 상세**: `ProviderRefreshResult.errorMessage` + 각 공급자(Ollama/Gemini/OpenAI호환/커스텀) 갱신 실패 사유 채움, `summaryText`에 실패 사유 "실패: 공급자(사유)" 표기, `refresh()` 로그에 실패 목록 포함.
+- **비교 모델 선택 UX**: 공급자 섹션별 모델 행 클릭 토글(square ⇄ checkmark.square.fill) + 선택 카운터 + hover 툴팁 안정화
+- **비교 오버레이 유지**: 완료 후에도 결과 그리드를 사용자가 채택/취소 전까지 유지
+- **활성화한 모델만 필터 통일**: CompareModelPickerButton/SplitChatView/ComparisonView/BenchmarkView → `visibleModels(in:)` 공통 사용
+- **자동 스크롤**: 고정 높이 Markdown 렌더러에 `__AUTOSCROLL`/`scrollToBottom` 주입
+
 ### 검증
-- macOS build_and_run 성공 · 단위 테스트 265건 통과(신규 ParallelComparisonTests_T201 포함 3건)
+- macOS build_and_run 성공 · 단위 테스트 265건 통과(신규 UnavailableModelTests_V020 6건·ParallelComparisonTests_T201 3건 포함)
 
 ## [0.1.0] — 2026-09-03 (초기 릴리스)
 
