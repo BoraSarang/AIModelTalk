@@ -80,6 +80,7 @@
 ### 검증
 - 단위 테스트 **327건 전부 통과**(T-204~T-208 신규 9건: BuiltinToolTests/AppleIntelligenceTests/PromptTemplateTests 포함) · 빌드 성공 · `./build_and_run.sh debug macos` 설치/실행 확인
 - 전체 테스트는 **병렬 실행 불안정**(Ollama 등 네트워크 스위트 경합) → `-parallel-testing-enabled NO`로 실행 안정화 — 이후 게이트에 반영
+- **에러코드 충돌 정리**: T-204 `fetchBlocked`가 `E-MAC-NET-1005`(429용)를, `calcInvalid`가 `E-MAC-VALID-1003`(URL 형식용)을 재사용하던 중복을 분리 — 각각 `E-MAC-NET-1007`/`E-MAC-VALID-1005`로 재배정 + `E-MAC-NET-1006` 문구 추가(JSON 동기화).
 
 ### 검증
 - 단위 테스트 **286건 전부 통과**(신규 ModelParameterTests_T202 8건 — ModelParams.hasAny/Equatable·tok/s 2건 추가) · 빌드 성공

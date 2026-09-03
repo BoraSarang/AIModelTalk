@@ -60,9 +60,9 @@ enum WebSearchError: LocalizedError {
         case .missingAPIKey: return "E-MAC-KEY-1003"
         case .httpStatus: return "E-MAC-NET-1004"
         case .emptyQuery: return "E-MAC-VALID-1002"
-        case .fetchBlocked: return "E-MAC-NET-1005"
+        case .fetchBlocked: return "E-MAC-NET-1007"   // T-208: SSRF 차단 (NET-1005는 429와 충돌 → 분리)
         case .fetchTooLarge: return "E-MAC-NET-1006"
-        case .calcInvalid: return "E-MAC-VALID-1003"
+        case .calcInvalid: return "E-MAC-VALID-1005"    // T-208: 계산 오류 (VALID-1003은 URL 형식과 충돌 → 분리)
         }
     }
 }
