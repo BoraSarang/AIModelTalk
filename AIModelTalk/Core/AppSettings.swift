@@ -119,10 +119,6 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(mcpToolsEnabled, forKey: "mcpToolsEnabled") }
     }
 
-    @Published var defaultModelID: String {
-        didSet { UserDefaults.standard.set(defaultModelID, forKey: "defaultModelID") }
-    }
-
     @Published var showJudgeSummary: Bool {
         didSet { UserDefaults.standard.set(showJudgeSummary, forKey: "showJudgeSummary") }
     }
@@ -212,7 +208,6 @@ final class AppSettings: ObservableObject {
         auxiliaryModelSpec = defaults.string(forKey: "auxiliaryModelSpec") ?? ""
         mcpToolsEnabled = defaults.object(forKey: "mcpToolsEnabled") as? Bool ?? false
         tavilyAPIKey = apiKeys.string(forKey: "tavilyAPIKey") ?? ""
-        defaultModelID = defaults.string(forKey: "defaultModelID") ?? ""
         showJudgeSummary = defaults.object(forKey: "showJudgeSummary") as? Bool ?? true
         judgeProviderRaw = defaults.string(forKey: "judgeProviderRaw")
         showSynthesis = defaults.object(forKey: "showSynthesis") as? Bool ?? true

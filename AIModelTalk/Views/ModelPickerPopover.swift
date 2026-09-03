@@ -112,10 +112,6 @@ struct ModelPickerPopover: View {
         let selColor = model.provider.accentSwiftUIColor
         let rawID = model.id.split(separator: "/").last.map(String.init) ?? model.id
         let rowLabel = rawID == model.displayName ? model.displayName : "\(model.displayName) (\(rawID))"
-        let isDefault: Bool = {
-            guard let def = viewModel.defaultModel else { return false }
-            return def.provider == model.provider && def.id == model.id
-        }()
         return Button {
             viewModel.selectModel(model)
             modelSearchText = ""
@@ -130,12 +126,6 @@ struct ModelPickerPopover: View {
                     .foregroundStyle(isSel ? selColor : .primary)
                     .fontWeight(isSel ? .semibold : .regular)
                 Spacer()
-                if isDefault {
-                    Image(systemName: "star.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.yellow)
-                        .help("기본 모델 — 새 대화가 이 모델로 시작합니다")
-                }
                 if model.supportsVision {
                     Image(systemName: "eye")
                         .font(.caption2)

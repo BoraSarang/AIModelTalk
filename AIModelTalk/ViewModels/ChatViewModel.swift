@@ -139,7 +139,6 @@ final class ChatViewModel: ObservableObject {
     // MARK: - 세션 관리
     func createNewSession() {
         applyDefaultSkills() // 새 대화마다 기본 스킬 자동 적용 (v1.7 D7)
-        applyDefaultModelIfNeeded() // 기본 모델 지정 시 그 모델로 시작 (v1.7.3 T-66)
         // selectedSkills를 세션에 함께 저장 — 누락 시 직후 restoreSessionState가 빈 배열로
         // 덮어써서 기본 스킬이 즉시 사라졌음 (v1.7.3 T-65)
         // systemPrompt는 오버라이드 전용 필드 — 빈 값이면 전역 설정을 따른다 (v1.9 T-74)
@@ -819,43 +818,6 @@ final class ChatViewModel: ObservableObject {
         if let data = try? JSONEncoder().encode(selectedSkills) {
             UserDefaults.standard.set(data, forKey: "lastSelectedSkills")
         }
-    }
-
-    // MARK: - 기본 모델 (v1.7.3 T-66)
-
-    /// 설정에서 지정한 기본 모델 — 새 대화 시작 모델 (스킬의 기본 지정과 동일 개념)
-    @Published private(set) var defaultModel: AIModel? = DefaultModelStore(defaults: .standard).model
-
-    /// 구조체 저장소라 값 대입이 필요 — 반드시 var (let이면 "cannot assign" 빌드 오류)
-    private var defaultModelStore = DefaultModelStore(defaults: .standard)
-
-    /// 기본 모델 지정/해제 — 이미 기본인 모델을 다시 누르면 해제(토글)
-    func setDefaultModel(_ model: AIModel) {
-        if let current = defaultModel, current.provider == model.provider, current.id == model.id {
-            defaultModelStore.model = nil
-            defaultModel = nil
-            DebugLogger.shared.info("MODEL", "기본 모델 해제")
-            return
-        }
-        defaultModelStore.model = model
-        defaultModel = model
-        DebugLogger.shared.info("MODEL", "기본 모델 설정: \(model.displayName) (\(model.provider.rawValue))")
-    }
-
-    /// 카탈로그에 존재하고 사용 중인 기본 모델만 유효 — 삭제/비활성된 지정은 무시
-    private func effectiveDefaultModel() -> AIModel? {
-        guard let def = defaultModel,
-              let live = ModelCatalog.shared.models.first(where: { $0.provider == def.provider && $0.id == def.id }),
-              ModelCatalog.shared.isEnabled(live) else { return nil }
-        return live
-    }
-
-    /// 기본 모델로 현재 선택을 교체 — selectModel 재사용 금지(이전 세션 갱신 부작용)
-    private func applyDefaultModelIfNeeded() {
-        guard let def = effectiveDefaultModel() else { return }
-        guard selectedModel.provider != def.provider || selectedModel.id != def.id else { return }
-        selectedModel = def
-        persistSelection()
     }
 
     // MARK: - 스킬 표시/기본 설정 (v1.7 T-54~56 · v1.7.1 T-60~62)

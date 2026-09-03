@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ModelsSettingsView: View {
     @ObservedObject private var catalog = ModelCatalog.shared
-    @ObservedObject private var chatVM = ChatViewModel.shared
 
     private let noneSelectedID = ""
 
@@ -145,10 +144,7 @@ struct ModelsSettingsView: View {
                                 ForEach(searchedModels) { model in
                                     ModelRow(
                                         model: model,
-                                        isDefault: chatVM.defaultModel?.provider == model.provider
-                                        && chatVM.defaultModel?.id == model.id,
                                         isEnabled: catalog.isEnabled(model),
-                                        onToggleDefault: { chatVM.setDefaultModel(model) },
                                         onToggleEnabled: { catalog.setEnabled(model, $0) },
                                         onDelete: { deleteModel(model) }
                                     )
@@ -254,9 +250,7 @@ struct ModelsSettingsView: View {
 
 private struct ModelRow: View {
     let model: AIModel
-    let isDefault: Bool
     let isEnabled: Bool
-    let onToggleDefault: () -> Void
     let onToggleEnabled: (Bool) -> Void
     let onDelete: () -> Void
 
@@ -292,13 +286,6 @@ private struct ModelRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-
-                Button { onToggleDefault() } label: {
-                    Image(systemName: isDefault ? "star.fill" : "star")
-                        .foregroundStyle(isDefault ? Color.yellow : Color.secondary)
-                }
-                .buttonStyle(.plain)
-                .help(isDefault ? "기본 모델 해제" : "새 대화가 이 모델로 시작합니다")
 
                 Toggle("", isOn: Binding(
                     get: { isEnabled },
