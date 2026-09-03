@@ -56,19 +56,50 @@ struct CompareModelPickerButton: View {
             }
             .frame(maxWidth: 320, maxHeight: 240)
 
-            // 온도 (T-202) — nil이면 공급자 기본값
-            HStack(spacing: 6) {
-                Text("temperature")
+            // 모델 파라미터 (T-202) — 전부 기본값이면 공급자 기본값
+            VStack(alignment: .leading, spacing: 6) {
+                Text("모델 파라미터")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Picker("", selection: temperatureBinding) {
-                    Text("기본값").tag(Double?.none)
-                    ForEach([0.0, 0.2, 0.5, 0.7, 1.0], id: \.self) { v in
-                        Text(String(format: "%.1f", v)).tag(Double?.some(v))
+                HStack(spacing: 6) {
+                    Text("temperature")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Picker("", selection: tempBinding) {
+                        Text("기본값").tag(Double?.none)
+                        ForEach([0.0, 0.2, 0.5, 0.7, 1.0], id: \.self) { v in
+                            Text(String(format: "%.1f", v)).tag(Double?.some(v))
+                        }
                     }
+                    .labelsHidden()
+                    .controlSize(.small)
                 }
-                .labelsHidden()
-                .controlSize(.small)
+                HStack(spacing: 6) {
+                    Text("topP")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Picker("", selection: topPBinding) {
+                        Text("기본값").tag(Double?.none)
+                        ForEach([0.5, 0.8, 0.9, 1.0], id: \.self) { v in
+                            Text(String(format: "%.1f", v)).tag(Double?.some(v))
+                        }
+                    }
+                    .labelsHidden()
+                    .controlSize(.small)
+                }
+                HStack(spacing: 6) {
+                    Text("maxTokens")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Picker("", selection: maxTokensBinding) {
+                        Text("기본값").tag(Int?.none)
+                        ForEach([512, 1024, 2048, 4096], id: \.self) { v in
+                            Text("\(v)").tag(Int?.some(v))
+                        }
+                    }
+                    .labelsHidden()
+                    .controlSize(.small)
+                }
             }
 
             Divider()
@@ -127,10 +158,24 @@ struct CompareModelPickerButton: View {
         }
     }
 
-    private var temperatureBinding: Binding<Double?> {
+    private var tempBinding: Binding<Double?> {
         Binding(
-            get: { viewModel.compareTemperature },
-            set: { viewModel.compareTemperature = $0 }
+            get: { viewModel.compareParams.temperature },
+            set: { viewModel.compareParams.temperature = $0 }
+        )
+    }
+
+    private var topPBinding: Binding<Double?> {
+        Binding(
+            get: { viewModel.compareParams.topP },
+            set: { viewModel.compareParams.topP = $0 }
+        )
+    }
+
+    private var maxTokensBinding: Binding<Int?> {
+        Binding(
+            get: { viewModel.compareParams.maxTokens },
+            set: { viewModel.compareParams.maxTokens = $0 }
         )
     }
 

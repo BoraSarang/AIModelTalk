@@ -9,6 +9,8 @@ struct CompareOverlayView: View {
     @ObservedObject var viewModel: ChatViewModel
     @ObservedObject private var service = ComparisonService.shared
 
+    @State private var showSentPanel = false
+
     /// 어시스턴트 채택 대상 세션 — 현재 대화 세션
     private var sessionID: UUID { viewModel.currentSessionID ?? UUID() }
 
@@ -39,10 +41,22 @@ struct CompareOverlayView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if let temp = viewModel.compareTemperature {
-                Text(String(format: "temperature %.1f", temp))
+            if viewModel.compareParams.hasAny {
+                Text(paramSummary)
                     .font(.caption2)
+                    .monospacedDigit()
                     .foregroundStyle(.tertiary)
+            }
+            Button {
+                showSentPanel.toggle()
+            } label: {
+                Label("무엇을 보냈나", systemImage: "doc.text.magnifyingglass")
+                    .font(.caption2)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .popover(isPresented: $showSentPanel, arrowEdge: .top) {
+                SentPayloadPanel(viewModel: viewModel, service: service)
             }
             Button("취소") {
                 viewModel.cancelComparison()
@@ -50,6 +64,15 @@ struct CompareOverlayView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
         }
+    }
+
+    /// 설정된 파라미터 한 줄 요약 (T-202)
+    private var paramSummary: String {
+        var parts: [String] = []
+        if let t = viewModel.compareParams.temperature { parts.append(String(format: "T %.1f", t)) }
+        if let p = viewModel.compareParams.topP { parts.append(String(format: "topP %.1f", p)) }
+        if let m = viewModel.compareParams.maxTokens { parts.append("maxTokens \(m)") }
+        return parts.joined(separator: " · ")
     }
 
     private var resultsGrid: some View {
@@ -132,6 +155,13 @@ struct CompareOverlayView: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
+            if let tps = result.tokensPerSecond {
+                Text(String(format: "%.1f tok/s", tps))
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .help("실측 완료 토큰 ÷ 총 응답 시간")
+            }
             if let pt = result.promptTokens.map({ SessionTokens.compact($0) }),
                let ct = result.completionTokens.map({ SessionTokens.compact($0) }) {
                 Label("\(pt)/\(ct)", systemImage: "arrow.up.arrow.down")
@@ -147,5 +177,77 @@ struct CompareOverlayView: View {
                     .monospacedDigit()
             }
         }
+    }
+}
+
+/// "무엇을 보냈는지" 투명 패널 (T-202) — 파라미터·실측 토큰·시스템 프롬프트를 한눈에 표시
+private struct SentPayloadPanel: View {
+    @ObservedObject var viewModel: ChatViewModel
+    @ObservedObject var service: ComparisonService
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("보낸 요청 정보")
+                .font(.headline)
+
+            // 공통 파라미터 — 전부 기본값이면 "공급자 기본값 사용"
+            let p = viewModel.compareParams
+            Text(parameterText(p))
+                .font(.caption)
+                .monospacedDigit()
+
+            Divider()
+
+            // 시스템 프롬프트 — 채팅을 발송한 컨텍스트의 시스템 프롬프트 (비밀 아닌 부분만)
+            Text("시스템 프롬프트")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(systemPromptPreview)
+                .font(.caption2)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: 320, alignment: .leading)
+                .textSelection(.enabled)
+
+            Divider()
+
+            // 래인별 실측 토큰
+            Text("래인별 사용량")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(service.results) { result in
+                let pt = result.promptTokens.map { SessionTokens.compact($0) } ?? "—"
+                let ct = result.completionTokens.map { SessionTokens.compact($0) } ?? "—"
+                let t = result.totalTime.map { String(format: "%.1fs", $0) } ?? "…"
+                HStack {
+                    Text(result.model.displayName)
+                        .font(.caption2)
+                        .lineLimit(1)
+                    Spacer()
+                    Text("\(pt)/\(ct)")
+                        .font(.caption2)
+                        .monospacedDigit()
+                    Text(t)
+                        .font(.caption2)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: 340)
+    }
+
+    private func parameterText(_ p: ModelParams) -> String {
+        var parts: [String] = []
+        if let t = p.temperature { parts.append(String(format: "temperature %.1f", t)) }
+        if let top = p.topP { parts.append(String(format: "topP %.1f", top)) }
+        if let m = p.maxTokens { parts.append("maxTokens \(m)") }
+        return parts.isEmpty ? "파라미터: 공급자 기본값" : "파라미터: " + parts.joined(separator: " · ")
+    }
+
+    /// 시스템 프롬프트 — 발송 컨텍스트 재구성의 일부만 요약 표시 (과다 노출 방지)
+    private var systemPromptPreview: String {
+        let p = viewModel.buildSystemPrompt()
+        return p.isEmpty ? "(없음)" : String(p.prefix(400))
     }
 }

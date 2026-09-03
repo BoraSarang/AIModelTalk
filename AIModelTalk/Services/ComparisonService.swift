@@ -14,6 +14,12 @@ struct ComparisonResult: Identifiable {
 
     /// 답변 글자 수 — 리포트 표시용
     var answerLength: Int { text.count }
+
+    /// 초당 출력 토큰 (T-202 성능 메트릭) — 실측 완료 토큰 / 총 응답 시간
+    var tokensPerSecond: Double? {
+        guard let ct = completionTokens, ct > 0, let t = totalTime, t > 0 else { return nil }
+        return Double(ct) / t
+    }
 }
 
 /// 판정 모델의 루브릭 채점 결과 (v1.9 T-87)
@@ -129,8 +135,8 @@ final class ComparisonService: ObservableObject {
     /// 루브릭 채점 — 파싱 성공 시 채워지고, 실패 시 judgeSummary 텍스트로 폴백 (v1.9 T-87)
 @Published var reportScores: [JudgeScore] = []
     @Published var winnerName: String? = nil
-    /// 비교 실행 시 지정할 캐릭터별 샘플링 온도 (T-202) — nil이면 공급자 기본값
-    var temperature: Double? = nil
+    /// 비교 실행 시 지정할 모델 파라미터 (T-202) — 전부 nil이면 공급자 기본값
+    var params: ModelParams = .none
 
     func run(models: [AIModel]) async {
         guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !models.isEmpty else { return }
@@ -159,6 +165,13 @@ final class ComparisonService: ObservableObject {
     /// `context`(대화 이력)를 모든 래인에 동일 적용해 나란히 스트리밍한다.
     /// 채점·승자 판정은 기존 runJudge 논리를 컨텍스트 버전으로 재사용한다.
     func run(context: [ChatMessage], systemPrompt: String?, temperature: Double?, models: [AIModel]) async {
+        await run(context: context, systemPrompt: systemPrompt,
+                  params: ModelParams(temperature: temperature, topP: nil, maxTokens: nil),
+                  models: models)
+    }
+
+    /// 대화 컨텍스트 + 모델 파라미터 기반 병렬 비교 (T-202)
+    func run(context: [ChatMessage], systemPrompt: String?, params: ModelParams, models: [AIModel]) async {
         guard !models.isEmpty else { return }
 
         results = models.map { ComparisonResult(model: $0, isStreaming: true) }
@@ -170,12 +183,13 @@ final class ComparisonService: ObservableObject {
 
         let ctx = context
         let sys = systemPrompt
-        let temp = temperature
+        let p = params
+        self.params = p
 
         await withTaskGroup(of: Void.self) { group in
             for idx in results.indices {
                 group.addTask { [weak self] in
-                    await self?.streamOne(index: idx, context: ctx, systemPrompt: sys, temperature: temp)
+                    await self?.streamOne(index: idx, context: ctx, systemPrompt: sys, params: p)
                 }
             }
         }
@@ -199,10 +213,10 @@ final class ComparisonService: ObservableObject {
     }
 
     private func streamOne(index: Int) async {
-        await streamOne(index: index, context: [ChatMessage(role: .user, content: question)], systemPrompt: nil, temperature: temperature)
+        await streamOne(index: index, context: [ChatMessage(role: .user, content: question)], systemPrompt: nil, params: params)
     }
 
-    private func streamOne(index: Int, context: [ChatMessage], systemPrompt: String?, temperature: Double?) async {
+    private func streamOne(index: Int, context: [ChatMessage], systemPrompt: String?, params: ModelParams) async {
         let model = results[index].model
         guard let client = try? AIClientFactory.client(provider: model.provider, modelID: model.id) else {
             results[index].isStreaming = false
@@ -214,7 +228,8 @@ final class ComparisonService: ObservableObject {
         let start = Date()
         do {
             let capture = UsageCapture()
-            let stream = client.stream(messages: messages, systemPrompt: systemPrompt, temperature: temperature) { prompt, completion in
+            let stream = client.stream(messages: messages, systemPrompt: systemPrompt,
+                                       temperature: params.temperature, topP: params.topP, maxTokens: params.maxTokens) { prompt, completion in
                 capture.promptTokens = prompt
                 capture.completionTokens = completion
             }

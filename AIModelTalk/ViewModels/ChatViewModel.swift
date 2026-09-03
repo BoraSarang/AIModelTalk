@@ -53,8 +53,8 @@ final class ChatViewModel: ObservableObject {
     @Published var isComparing = false
     /// 비교 대상 모델 ID 집합 (대화 나란히 비교 선택)
     @Published var selectedCompareModelIDs: Set<String> = []
-    /// 비교 실행 캐릭터별 샘플링 온도 (T-202) — nil이면 공급자 기본값
-    @Published var compareTemperature: Double? = nil
+    /// 비교 실행 모델 파라미터 (T-202) — 전부 nil이면 공급자 기본값
+    @Published var compareParams: ModelParams = .none
     /// 빠른 대화(패널) 세션 — 미저장 draft는 목록에서 숨겨지고 패널을 닫으면 폐기됨 (런타임 전용, SwiftData 미저장)
     @Published private(set) var quickSessionID: UUID?
     @Published private(set) var isQuickSessionDraft = false
@@ -1328,7 +1328,7 @@ final class ChatViewModel: ObservableObject {
             await self.comparisonService.run(
                 context: context,
                 systemPrompt: systemPrompt,
-                temperature: self.compareTemperature,
+                params: self.compareParams,
                 models: models)
             // 완료 후에도 오버레이를 유지한다 — 사용자가 결과를 보고
             // "이 답변으로 대화 계속"(채택) 또는 "취소"로 직접 닫기 전까지.
