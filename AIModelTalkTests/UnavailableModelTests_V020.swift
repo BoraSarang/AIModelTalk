@@ -21,13 +21,17 @@ final class UnavailableModelTests_V020: XCTestCase {
 
     // MARK: - 실패 사유 힌트
 
-    func testFailureHintMapsStatusCodes() {
-        XCTAssertEqual(ComparisonService.failureHint(for: .serverError(410, "")), "모델이 사용 종료되었습니다")
-        XCTAssertEqual(ComparisonService.failureHint(for: .serverError(404, "")), "모델을 찾을 수 없습니다")
-        XCTAssertEqual(ComparisonService.failureHint(for: .serverError(402, "")), "API 잔액 부족")
-        XCTAssertEqual(ComparisonService.failureHint(for: .serverError(400, "")), "요청 형식 오류")
-        XCTAssertEqual(ComparisonService.failureHint(for: .serverError(200, "")), "")
-        XCTAssertEqual(ComparisonService.failureHint(for: .network("x")), "")
+    // MARK: - 상태코드별 안내 문구 (errorDescription)
+
+    func testErrorDescriptionMapsStatusCodes() {
+        XCTAssertEqual(AppError.serverError(410, "").localizedDescription, "모델이 사용 종료(EOL)되어 목록에서 자동 제외됩니다. (HTTP 410)")
+        XCTAssertEqual(AppError.serverError(404, "").localizedDescription, "모델을 찾을 수 없습니다. 모델/공급자 설정을 확인해 주세요. (HTTP 404)")
+        XCTAssertEqual(AppError.serverError(402, "").localizedDescription, "API 잔액이 부족합니다. 충전 후 다시 시도해 주세요. (HTTP 402)")
+        XCTAssertEqual(AppError.serverError(400, "").localizedDescription, "요청 형식이 올바르지 않습니다. 내용을 확인한 후 다시 시도해 주세요.")
+        XCTAssertTrue(AppError.serverError(401, "").localizedDescription.contains("인증에 실패했습니다"))
+        XCTAssertTrue(AppError.serverError(429, "").localizedDescription.contains("사용 한도를 초과했습니다"))
+        XCTAssertTrue(AppError.serverError(503, "").localizedDescription.contains("공급자 서버에 오류가 발생했습니다"))
+        XCTAssertTrue(AppError.network("x").localizedDescription.contains("네트워크 오류"))
     }
 
     // MARK: - 갱신 리포트 실패 사유

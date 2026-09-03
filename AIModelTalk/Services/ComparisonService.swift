@@ -229,8 +229,8 @@ final class ComparisonService: ObservableObject {
             results[index].completionTokens = capture.completionTokens
         } catch let error as AppError {
             let disabled = ModelCatalog.shared.disableUnavailableModel(error: error, model: results[index].model)
-            let hint = Self.failureHint(for: error) + (disabled ? " (목록에서 자동 제외됨)" : "")
-            results[index].error = "[\(error.errorCode)] \(error.localizedDescription ?? "")\(hint.isEmpty ? "" : " — \(hint)")"
+            let suffix = disabled ? " (목록에서 자동 제외됨)" : ""
+            results[index].error = "\(error.localizedDescription)\(suffix)"
         } catch {
             results[index].error = "알 수 없는 오류"
         }
@@ -309,20 +309,6 @@ final class ComparisonService: ObservableObject {
     }
 
     // MARK: - 파싱/순위 헬퍼 (테스트 가능하도록 nonisolated static)
-
-    /// HTTP 상태코드별 사람이 읽기 쉬운 실패 사유 (비교·채팅 래인 문구 보강)
-    nonisolated static func failureHint(for error: AppError) -> String {
-        guard case .serverError(let code, _) = error else { return "" }
-        switch code {
-        case 410: return "모델이 사용 종료되었습니다"
-        case 404: return "모델을 찾을 수 없습니다"
-        case 402: return "API 잔액 부족"
-        case 400: return "요청 형식 오류"
-        case 401, 403: return "인증 실패 (API 키 확인)"
-        case 429: return "요청 한도/속도 초과"
-        default: return ""
-        }
-    }
 
     /// 판정 응답에서 JSON 추출·디코딩 — 코드펜스/주변 잡음 방어
     nonisolated static func parseVerdict(_ raw: String) -> JudgeVerdictPayload? {

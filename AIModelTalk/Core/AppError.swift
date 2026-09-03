@@ -50,11 +50,25 @@ enum AppError: Error, LocalizedError {
         case .timeout:
             return "요청 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요."
         case .serverError(let code, _):
-            // 429: 공급자(특히 무료 티어) 요청 한도/속도 초과 — 재시도 안내 메시지 (v3.2 T-154)
-            if code == 429 {
+            // HTTP 상태코드별 원인을 사용자 언어로 명확히 안내 (v0.2.0)
+            switch code {
+            case 400:
+                return "요청 형식이 올바르지 않습니다. 내용을 확인한 후 다시 시도해 주세요."
+            case 401, 403:
+                return "인증에 실패했습니다. 설정에서 API 키를 확인해 주세요. (HTTP \(code))"
+            case 402:
+                return "API 잔액이 부족합니다. 충전 후 다시 시도해 주세요. (HTTP 402)"
+            case 404:
+                return "모델을 찾을 수 없습니다. 모델/공급자 설정을 확인해 주세요. (HTTP 404)"
+            case 410:
+                return "모델이 사용 종료(EOL)되어 목록에서 자동 제외됩니다. (HTTP 410)"
+            case 429:
                 return "요청이 너무 많거나 무료 사용 한도를 초과했습니다. 잠시 후 다시 시도해 주세요. (HTTP 429)"
+            case 500..<600:
+                return "공급자 서버에 오류가 발생했습니다. 잠시 후 다시 시도해 주세요. (HTTP \(code))"
+            default:
+                return "서버에서 오류를 반환했습니다. (HTTP \(code))"
             }
-            return "서버에서 오류를 반환했습니다. (HTTP \(code))"
         case .parseError:
             return "스트리밍 응답을 파싱하지 못했습니다."
         case .cancelled:
