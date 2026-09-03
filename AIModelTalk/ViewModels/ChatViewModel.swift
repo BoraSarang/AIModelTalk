@@ -742,26 +742,55 @@ final class ChatViewModel: ObservableObject {
     private func rerunAfterModelSwitch(model: AIModel, abortedAssistantID: UUID?) {
         guard let sessionID = currentSessionID,
               let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
-        // 미완 어시스턴트 메시지 제거
-        if let abortedID = abortedAssistantID {
+        // 미완 어시스턴트 제거 후 마지막 사용자 프롬프트 결정 (순수)
+        guard let (text, attachments) = Self.midSwitchProxy(
+            in: sessions[sessionIndex].messages,
+            abortedAssistantID: abortedAssistantID
+        ) else { return }
+        if abortedAssistantID != nil {
+            // 중단된 어시스턴트가 실제로 있는 경우에만 제거
             mutateMessages(of: sessionID) { messages in
-                if let i = messages.firstIndex(where: { $0.id == abortedID }) {
-                    messages.remove(at: i)
-                } else if let last = messages.last, last.role == .assistant, last.content.isEmpty {
-                    messages.removeLast()
+                if let abortedID = abortedAssistantID {
+                    if let i = messages.firstIndex(where: { $0.id == abortedID }) {
+                        messages.remove(at: i)
+                    } else if let last = messages.last, last.role == .assistant, last.content.isEmpty {
+                        messages.removeLast()
+                    }
                 }
             }
         } else if let last = sessions[sessionIndex].messages.last, last.role == .assistant, last.content.isEmpty {
             mutateMessages(of: sessionID) { messages in messages.removeLast() }
         }
-        // 마지막 사용자 프롬프트 재전송 — 컨텍스트(이전 이력)는 유지됨
-        guard let userMsg = sessions.first(where: { $0.id == sessionID })?.messages.last(where: { $0.role == .user }) else { return }
-        let text = userMsg.content
-        let attachments = userMsg.attachments
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.sendMessage(text, to: sessionID, attachments: attachments ?? [], reuseLastUser: true)
+            self?.sendMessage(text, to: sessionID, attachments: attachments, reuseLastUser: true)
         }
         DebugLogger.shared.info("MODEL", "[FEATURE] 미드스위치 → '\(model.displayName)'로 재전송: \(text.prefix(40))…")
+    }
+
+    /// 미드스위치 재전송 대상 결정 (순수, T-207) — 중단된 어시스턴트를 논리적으로 배제하고 마지막 사용자 메시지를 반환.
+    /// 실제 메시지 배열은 수정하지 않는다(전송 대상 식별만). 어시스턴트가 진짜 중단 대상이면 그 자리의 사용자 프롬프트를 재전송.
+    nonisolated static func midSwitchProxy(in messages: [ChatMessage], abortedAssistantID: UUID?) -> (text: String, attachments: [MessageAttachment])? {
+        var working = messages
+        // 중단 어시스턴트 제거 — 명시 ID, 없으면 마지막 빈 어시스턴트
+        if let abortedID = abortedAssistantID {
+            if let i = working.firstIndex(where: { $0.id == abortedID }) {
+                working.remove(at: i)
+            } else if let last = working.last, last.role == .assistant, last.content.isEmpty {
+                working.removeLast()
+            }
+        } else if let last = working.last, last.role == .assistant, last.content.isEmpty {
+            working.removeLast()
+        }
+        guard let user = working.last(where: { $0.role == .user }) else { return nil }
+        return (user.content, user.attachments ?? [])
+    }
+
+    /// 포크 재실행 대상 결정 (순수, T-207) — 분기점까지 히스토리에서 마지막 사용자 메시지를 반환.
+    nonisolated static func forkRerunProxy(in messages: [ChatMessage], cutMessageID: UUID) -> (text: String, attachments: [MessageAttachment])? {
+        guard let cutIndex = messages.firstIndex(where: { $0.id == cutMessageID }) else { return nil }
+        let slice = messages[messages.startIndex...cutIndex]
+        guard let user = slice.last(where: { $0.role == .user }) else { return nil }
+        return (user.content, user.attachments ?? [])
     }
 
     func toggleSkill(_ skill: SkillInfo) {
@@ -1560,17 +1589,13 @@ final class ChatViewModel: ObservableObject {
             DebugLogger.shared.warn("FORK", "재실행 차단 — 응답 생성 중")
             return
         }
-        guard let source = sessions.first(where: { $0.id == sessionID }),
-              let cutIndex = source.messages.firstIndex(where: { $0.id == messageID }) else {
-            return
-        }
-        // 분기점 까지 히스토리에서 마지막 사용자 메시지가 재전송 대상
-        let slice = source.messages[source.messages.startIndex...cutIndex]
-        guard let lastUser = slice.last(where: { $0.role == .user }) else { return }
+        guard let source = sessions.first(where: { $0.id == sessionID }) else { return }
+        // 분기점까지 히스토리에서 마지막 사용자 메시지가 재전송 대상 (순수)
+        guard let lastUser = Self.forkRerunProxy(in: source.messages, cutMessageID: messageID) else { return }
         forkSession(at: messageID, from: sessionID)
         let forkedID = currentSessionID ?? sessionID
-        let text = lastUser.content
-        let attachments = lastUser.attachments ?? []
+        let text = lastUser.text
+        let attachments = lastUser.attachments
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             // 포크 세션엔 이미 마지막 사용자 메시지가 복사돼 있으므로 재사용 (중복 append 방지)
             self?.sendMessage(text, to: forkedID, attachments: attachments, reuseLastUser: true)
