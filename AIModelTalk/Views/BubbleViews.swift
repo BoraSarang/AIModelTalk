@@ -132,6 +132,32 @@ struct AssistantBubbleView: View {
                     }
                 }
 
+                // 생성 이미지 표시 (v0.3.x 축4) — 본문 위에 표시, 저장 버튼 제공
+                if let attachments = message.attachments, !attachments.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(attachments) { attachment in
+                            if let image = NSImage(data: attachment.imageData) {
+                                HStack(alignment: .top, spacing: 6) {
+                                    Image(nsImage: image)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(maxWidth: 320, maxHeight: 320)
+                                        .clipShape(RoundedRectangle(cornerRadius: theme.radiusCard))
+                                        .overlay(RoundedRectangle(cornerRadius: theme.radiusCard).strokeBorder(theme.cardBorder.opacity(0.4)))
+                                    Button {
+                                        saveGeneratedImage(attachment)
+                                    } label: {
+                                        Image(systemName: "square.and.arrow.down")
+                                            .font(.system(size: 12))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("이미지 저장")
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // 본문
                 if message.isStreaming && message.content.isEmpty {
                     TypingIndicatorView()
@@ -261,6 +287,18 @@ struct AssistantBubbleView: View {
                     .padding(.bottom, 4)
             }
         }
+    }
+
+    /// 생성 이미지 NSSavePanel 저장 (v0.3.x 축4)
+    private func saveGeneratedImage(_ attachment: MessageAttachment) {
+        let panel = NSSavePanel()
+        panel.title = "이미지 저장"
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = attachment.fileName ?? "generated-image.png"
+        panel.allowedContentTypes = [.png]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? attachment.imageData.write(to: url)
+        DebugLogger.shared.info("IMAGE", "[FEATURE] 생성 이미지 저장: \(url.path)")
     }
 }
 

@@ -1072,9 +1072,23 @@ final class ChatViewModel: ObservableObject {
     }
 
     // MARK: - 전송
+
+    /// 세션 용도 모드 변경 (v0.3.x 축4)
+    func setMode(_ mode: ChatMode, for sessionID: UUID) {
+        guard let idx = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        sessions[idx].mode = mode
+        DebugLogger.shared.info("MODE", "[FEATURE] 세션 모드 변경: \(mode.label)")
+    }
+
     func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isLoading, let sessionID = currentSessionID else { return }
+        // 이미지 모드 분기 (v0.3.x 축4) — 이미지 생성 파이프라인
+        if currentSession?.mode == .image, let imageModel = ModelCatalog.imageModels.first {
+            inputText = ""
+            sendImage(text, to: sessionID, model: imageModel)
+            return
+        }
         // 이미지 첨부 시 비전 지원 모델인지 확인 (T-71)
         if !pendingAttachments.isEmpty && !selectedModel.supportsVision {
             attachmentNotice = "'\(selectedModel.displayName)' 모델은 이미지를 지원하지 않습니다. 비전 지원 모델(👁)로 변경해 주세요."
@@ -1086,6 +1100,48 @@ final class ChatViewModel: ObservableObject {
         let attachments = pendingAttachments
         pendingAttachments = []
         sendMessage(text, to: sessionID, attachments: attachments)
+    }
+
+    // MARK: - 이미지 생성 전송 (v0.3.x 축4)
+
+    /// 이미지 모드 전송 — ImageClient로 생성해 생성 이미지를 어시스턴트 메시지에 부착
+    func sendImage(_ prompt: String, to sessionID: UUID, model: AIModel, size: String = "1024x1024") {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isLoading,
+              let idx = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        isLoading = true
+        sessions[idx].messages.append(ChatMessage(role: .user, content: text))
+        let assistant = ChatMessage(role: .assistant, content: "이미지 생성 중…",
+                                    provider: model.provider, modelID: model.id, isStreaming: true)
+        sessions[idx].messages.append(assistant)
+        let assistantID = assistant.id
+        Task {
+            do {
+                let result = try await ImageClient.generate(prompt: text, model: model, size: size)
+                let attachment = MessageAttachment(
+                    fileName: "generated-\(Int(Date().timeIntervalSince1970)).png",
+                    mimeType: "image/png",
+                    imageData: result.imageData)
+                mutateMessages(of: sessionID) { msgs in
+                    for i in msgs.indices where msgs[i].id == assistantID {
+                        msgs[i].content = result.revisedPrompt ?? text
+                        msgs[i].attachments = [attachment]
+                        msgs[i].isStreaming = false
+                    }
+                }
+                DebugLogger.shared.info("IMAGE", "[FEATURE] 이미지 생성 어시스턴트 메시지 부착 완료")
+            } catch {
+                DebugLogger.shared.error("IMAGE", "[E-MAC-IMG-1003] 이미지 생성 실패: \(error.localizedDescription)")
+                mutateMessages(of: sessionID) { msgs in
+                    for i in msgs.indices where msgs[i].id == assistantID {
+                        msgs[i].content = "이미지 생성 실패: \(error.localizedDescription)"
+                        msgs[i].isError = true
+                        msgs[i].isStreaming = false
+                    }
+                }
+            }
+            isLoading = false
+        }
     }
 
     // MARK: - 이미지 첨부 (v1.8 T-71)

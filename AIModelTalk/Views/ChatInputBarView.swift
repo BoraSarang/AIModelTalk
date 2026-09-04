@@ -16,6 +16,33 @@ struct ChatInputBarView: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            // 용도 모드 세그먼트 (v0.3.x 축4) — 채팅/이미지/코딩
+            if let sessionID = viewModel.currentSessionID {
+                HStack {
+                    Picker("", selection: Binding(
+                        get: { viewModel.currentSession?.mode ?? .chat },
+                        set: { viewModel.setMode($0, for: sessionID) }
+                    )) {
+                        ForEach(ChatMode.allCases) { mode in
+                            Label(mode.label, systemImage: mode.icon).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 260)
+                    if viewModel.currentSession?.mode == .image {
+                        Text("이미지 생성 — 프롬프트를 입력하고 전송하세요")
+                            .font(.caption2)
+                            .foregroundStyle(theme.secondaryText)
+                    } else if viewModel.currentSession?.mode == .coding {
+                        Text("코딩 — 워크스페이스 파일 도구와 연계됩니다")
+                            .font(.caption2)
+                            .foregroundStyle(theme.secondaryText)
+                    }
+                    Spacer()
+                }
+            }
+
             // 이미지 첨부 썸네일 행 (T-71)
             if !viewModel.pendingAttachments.isEmpty {
                 attachmentThumbnails

@@ -140,6 +140,13 @@ final class ModelCatalog: ObservableObject {
         AIModel(id: "apple-intelligence", provider: .appleIntelligence, displayName: "Apple Intelligence", contextLimit: 8_192),
     ]
 
+    // MARK: - 이미지 생성 모델 (v0.3.x 축4)
+    /// 채팅 피커에 노출되지 않는 전용 이미지 생성 모델. OpenAI 호환 이미지 API 사용.
+    static let imageModels: [AIModel] = [
+        AIModel(id: "gpt-image-1", provider: .openAI, displayName: "GPT Image 1", isFree: false, contextLimit: 0),
+        AIModel(id: "dall-e-3", provider: .openAI, displayName: "DALL·E 3", isFree: false, contextLimit: 0),
+    ]
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         // 로딩 전체를 배치로 묶는다 — 커스텀 모델 수백 개를 개별 append할 때마다

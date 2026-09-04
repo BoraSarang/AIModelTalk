@@ -60,6 +60,31 @@ enum ChatRole: String, Codable {
     case assistant
 }
 
+/// 세션 용도 모드 (v0.3.x 축4) — 채팅/이미지 생성/코딩
+enum ChatMode: String, Codable, CaseIterable, Identifiable {
+    case chat
+    case image
+    case coding
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .chat: return "채팅"
+        case .image: return "이미지"
+        case .coding: return "코딩"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .chat: return "bubble.left.and.bubble.right"
+        case .image: return "photo.on.rectangle.angled"
+        case .coding: return "chevron.left.forwardslash.chevron.right"
+        }
+    }
+}
+
 /// 메시지 첨부 이미지 (T-71 Vision)
 struct MessageAttachment: Identifiable, Codable, Hashable {
     let id: UUID
@@ -139,8 +164,10 @@ struct ChatSession: Identifiable, Codable {
     var deletedAt: Date?
     /// 세션별 테마 ID — nil이면 글로벌 테마 사용
     var themeID: String? = nil
+    /// 세션 용도 모드 (v0.3.x 축4) — 채팅/이미지/코딩
+    var mode: ChatMode = .chat
 
-    init(id: UUID = UUID(), title: String = "새 대화", systemPrompt: String = "", messages: [ChatMessage] = [], currentModel: AIModel? = nil, selectedSkills: [SkillInfo] = [], createdAt: Date = Date(), updatedAt: Date = Date(), parentSessionID: UUID? = nil, forkedFromMessageID: UUID? = nil, isIncognito: Bool = false, archivedAt: Date? = nil, deletedAt: Date? = nil, themeID: String? = nil) {
+    init(id: UUID = UUID(), title: String = "새 대화", systemPrompt: String = "", messages: [ChatMessage] = [], currentModel: AIModel? = nil, selectedSkills: [SkillInfo] = [], createdAt: Date = Date(), updatedAt: Date = Date(), parentSessionID: UUID? = nil, forkedFromMessageID: UUID? = nil, isIncognito: Bool = false, archivedAt: Date? = nil, deletedAt: Date? = nil, themeID: String? = nil, mode: ChatMode = .chat) {
         self.id = id
         self.title = title
         self.systemPrompt = systemPrompt
@@ -155,6 +182,7 @@ struct ChatSession: Identifiable, Codable {
         self.archivedAt = archivedAt
         self.deletedAt = deletedAt
         self.themeID = themeID
+        self.mode = mode
     }
 }
 
