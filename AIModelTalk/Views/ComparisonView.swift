@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ComparisonView: View {
+    @Environment(\.theme) private var theme
     @ObservedObject private var service = ComparisonService.shared
     @ObservedObject private var settings = AppSettings.shared
     @State private var selectedModelIDs: Set<String> = []
@@ -59,7 +60,7 @@ struct ComparisonView: View {
                 .padding(.horizontal, 2)
             }
         }
-        .padding(DS.windowInset)
+        .padding(theme.windowInset)
     }
 
     // MARK: - 질문 입력
@@ -78,7 +79,7 @@ struct ComparisonView: View {
                 ProgressView().controlSize(.small)
             }
         }
-        .padding(DS.windowInset)
+        .padding(theme.windowInset)
     }
 
     // MARK: - 결과
@@ -92,7 +93,7 @@ struct ComparisonView: View {
                         .font(.system(size: 36))
                         .foregroundStyle(.quaternary)
                     Text("모델을 선택하고 질문을 입력하세요")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 100)
@@ -113,7 +114,7 @@ struct ComparisonView: View {
                             ResultColumnView(result: result)
                         }
                     }
-                    .padding(DS.windowInset)
+                    .padding(theme.windowInset)
 
                     if !service.judgeSummary.isEmpty || service.isJudging {
                         judgeCard
@@ -144,7 +145,7 @@ struct ComparisonView: View {
                         ProgressView().controlSize(.small)
                         Text("루브릭 채점 중…")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.secondaryText)
                     }
                 } else if !service.reportScores.isEmpty {
                     Text("루브릭 · 10점 만점")
@@ -162,8 +163,8 @@ struct ComparisonView: View {
             }
         }
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: DS.radiusCard).fill(.regularMaterial))
-        .overlay(RoundedRectangle(cornerRadius: DS.radiusCard).strokeBorder(Color.accentColor.opacity(0.3)))
+        .background(RoundedRectangle(cornerRadius: theme.radiusCard).fill(theme.cardBackground))
+        .overlay(RoundedRectangle(cornerRadius: theme.radiusCard).strokeBorder(theme.accentColor.opacity(0.3)))
     }
 
     @ViewBuilder
@@ -183,7 +184,7 @@ struct ComparisonView: View {
                     // 공급자 구분 — 동명 모델이 여러 공급자에 있을 수 있음 (v1.9 T-88)
                     Text("· \(originName(result))")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                         .lineLimit(1)
                     if result.error != nil {
                         Text("응답 실패")
@@ -200,7 +201,7 @@ struct ComparisonView: View {
                         Text(score.comment)
                             .font(.caption)
                             .italic()
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.secondaryText)
                     }
                 }
             }
@@ -238,7 +239,7 @@ struct ComparisonView: View {
     private func rankBadge(index: Int, winner: Bool) -> some View {
         ZStack {
             Circle()
-                .fill(winner ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary.opacity(0.15)))
+                .fill(winner ? AnyShapeStyle(theme.accentColor) : AnyShapeStyle(theme.secondaryText.opacity(0.15)))
                 .frame(width: 26, height: 26)
             if winner {
                 Image(systemName: "crown.fill")
@@ -248,7 +249,7 @@ struct ComparisonView: View {
                 Text("\(index + 1)")
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
         }
         .help(winner ? "종합 1위" : "\(index + 1)위")
@@ -260,14 +261,14 @@ struct ComparisonView: View {
             if let ttft = result.ttft {
                 Label(String(format: "%.0fms", ttft * 1000), systemImage: "bolt.fill")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .monospacedDigit()
                     .help("첫 응답까지(TTFT)")
             }
             if let total = result.totalTime {
                 Label(String(format: "%.1fs", total), systemImage: "clock")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .monospacedDigit()
                     .help("전체 응답 시간")
                 speedBar(fraction: speedFraction(total))
@@ -275,7 +276,7 @@ struct ComparisonView: View {
             if result.answerLength > 0 {
                 Label("\(result.answerLength)자", systemImage: "textformat")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .monospacedDigit()
             }
             if result.ttft == nil && result.totalTime == nil && result.error == nil {
@@ -291,10 +292,10 @@ struct ComparisonView: View {
     private func speedBar(fraction: Double) -> some View {
         ZStack(alignment: .leading) {
             Capsule()
-                .fill(Color.secondary.opacity(0.15))
+                .fill(theme.secondaryText.opacity(0.15))
                 .frame(width: 64, height: 5)
             Capsule()
-                .fill(Color.accentColor.opacity(0.8))
+                .fill(theme.accentColor.opacity(0.8))
                 .frame(width: max(4, 64 * fraction), height: 5)
         }
         .help("상대 속도 — 길수록 빠름")
@@ -328,9 +329,9 @@ struct ComparisonView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(
-                Capsule().fill(emphasized ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12))
+                Capsule().fill(emphasized ? theme.accentColor.opacity(0.18) : theme.secondaryText.opacity(0.12))
             )
-            .foregroundStyle(emphasized ? Color.accentColor : Color.primary)
+            .foregroundStyle(emphasized ? theme.accentColor : theme.primaryText)
             .help("\(name): \(String(format: "%.1f", value))/10")
     }
 
@@ -348,8 +349,8 @@ struct ComparisonView: View {
                 .font(.system(size: 13))
         }
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: DS.radiusCard).fill(.regularMaterial))
-        .overlay(RoundedRectangle(cornerRadius: DS.radiusCard).strokeBorder(Color.accentColor.opacity(0.3)))
+        .background(RoundedRectangle(cornerRadius: theme.radiusCard).fill(theme.cardBackground))
+        .overlay(RoundedRectangle(cornerRadius: theme.radiusCard).strokeBorder(theme.accentColor.opacity(0.3)))
     }
 
     // MARK: - 헬퍼
@@ -370,6 +371,7 @@ struct ComparisonView: View {
 // MARK: - 개별 결과 컬럼
 
 struct ResultColumnView: View {
+    @Environment(\.theme) private var theme
     let result: ComparisonResult
 
     var body: some View {
@@ -380,14 +382,14 @@ struct ResultColumnView: View {
                     .font(.caption).fontWeight(.medium)
                 Text(result.model.displayName)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .lineLimit(1)
                 Spacer()
                 if let ttft = result.ttft {
                     Text(String(format: "%.0fms", ttft * 1000))
                         .font(.caption2)
                         .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                 }
                 // 실측 토큰 칩 (v1.9 T-78 완결)
                 if let pt = result.promptTokens.map({ SessionTokens.compact($0) }),
@@ -395,7 +397,7 @@ struct ResultColumnView: View {
                     Label("\(pt)/\(ct)", systemImage: "arrow.up.arrow.down")
                         .font(.caption2)
                         .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                         .help("실측 토큰 프롬프트/완료")
                 }
             }
@@ -420,7 +422,7 @@ struct ResultColumnView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity)
-        .background(RoundedRectangle(cornerRadius: DS.radiusCard).fill(.regularMaterial))
+        .background(RoundedRectangle(cornerRadius: theme.radiusCard).fill(theme.cardBackground))
     }
 }
 

@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SkillPickerPopover: View {
     @ObservedObject var viewModel: ChatViewModel
+    @Environment(\.theme) private var theme
 
     @State private var showSkillPicker = false
     @State private var searchText = ""
@@ -65,7 +66,7 @@ struct SkillPickerPopover: View {
             }
         }
         .frame(width: 300, height: 340)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(theme.cardBackground)
     }
 
     private var headerRow: some View {
@@ -128,8 +129,8 @@ struct SkillPickerPopover: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .background(Color(nsColor: .quaternaryLabelColor))
-        .clipShape(RoundedRectangle(cornerRadius: DS.radiusControl))
+        .background(theme.inputBackground)
+        .clipShape(RoundedRectangle(cornerRadius: theme.radiusControl))
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
     }
@@ -147,7 +148,7 @@ struct SkillPickerPopover: View {
                     HStack(spacing: 4) {
                         Text(skill.name)
                             .font(.callout)
-                            .foregroundStyle(isSel ? Color.accentColor : .primary)
+                            .foregroundStyle(isSel ? theme.accentColor : theme.primaryText)
                             .fontWeight(isSel ? .semibold : .regular)
                         if skill.source != .opencode {
                             Text(skill.source.label)

@@ -2,15 +2,16 @@ import SwiftUI
 
 /// 스킬 관리 — 표시 여부 + 기본 스킬 설정 (v1.7 T-55~56)
 struct SkillSettingsView: View {
+    @Environment(\.theme) private var theme
     @ObservedObject private var viewModel = ChatViewModel.shared
     @State private var isRefreshing = false
     @State private var searchText = ""
 
     var body: some View {
 
-                VStack(spacing: DS.space4) {
+                VStack(spacing: theme.space4) {
                     // ── 상단 카드 (고정) ──
-                    VStack(spacing: DS.space4) {
+                    VStack(spacing: theme.space4) {
                         // 검색 필드
                         HStack {
                             SettingsSearchField(placeholder: "스킬 이름 또는 설명 검색", text: $searchText)
@@ -21,11 +22,11 @@ struct SkillSettingsView: View {
                             Text("사용 가능한 스킬이 없습니다")
                             Text("~/.opencode/skills 디렉토리에 SKILL.md를 추가하거나 새로고침하세요.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.secondaryText)
                         } else {
                             Text("표시된 스킬만 피커에 나타나며, 기본 스킬은 새 대화에 자동 적용됩니다.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.secondaryText)
                             
                             HStack {
                                 Group {
@@ -36,7 +37,7 @@ struct SkillSettingsView: View {
                                     }
                                 }
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.secondaryText)
                                 Spacer()
                                 Button("모두 표시") {
                                     viewModel.setAllSkillsHidden(false)
@@ -63,10 +64,10 @@ struct SkillSettingsView: View {
                             }
                         }
                     }
-                    .padding(DS.cardInset)
-                    .dsCard()
+                    .padding(theme.cardInset)
+                    .background(theme.cardBackground).overlay(RoundedRectangle(cornerRadius: theme.cardCornerRadius).stroke(theme.cardBorder.opacity(theme.borderOpacity), lineWidth: theme.defaultBorderWidth)).clipShape(RoundedRectangle(cornerRadius: theme.cardCornerRadius, style: .continuous))
                     
-                    Spacer(minLength: DS.cardInset)
+                    Spacer(minLength: theme.cardInset)
                     
                     // ── 하단 카드 (스크롤) ──
                     ScrollView {
@@ -75,7 +76,7 @@ struct SkillSettingsView: View {
                                 SkillEmptyStateView()
                             } else if searchedSkills.isEmpty {
                                 Text("'\(searchText)'에 일치하는 스킬이 없습니다")
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(theme.secondaryText)
                                     .frame(maxWidth: .infinity)
                             } else {
                                 ForEach(searchedSkills) { skill in
@@ -83,12 +84,12 @@ struct SkillSettingsView: View {
                                 }
                             }
                         }
-                        .padding(DS.cardInset)
+                        .padding(theme.cardInset)
                     }
                     .frame(maxHeight: .infinity)
-                    .dsCard()
+                    .background(theme.cardBackground).overlay(RoundedRectangle(cornerRadius: theme.cardCornerRadius).stroke(theme.cardBorder.opacity(theme.borderOpacity), lineWidth: theme.defaultBorderWidth)).clipShape(RoundedRectangle(cornerRadius: theme.cardCornerRadius, style: .continuous))
                     
-                    Spacer(minLength: DS.cardInset)
+                    Spacer(minLength: theme.cardInset)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 100)
@@ -112,17 +113,19 @@ struct SkillSettingsView: View {
 // MARK: - 빈 상태
 
 private struct SkillEmptyStateView: View {
+    @Environment(\.theme) private var theme
+
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: "sparkles")
                 .font(.title2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(theme.tertiaryText)
             Text("사용 가능한 스킬이 없습니다")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
             Text("~/.opencode/skills 디렉토리에 SKILL.md를 추가하거나 새로고침하세요.")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(theme.tertiaryText)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
@@ -134,6 +137,7 @@ private struct SkillEmptyStateView: View {
 private struct SkillSettingRow: View {
     let skill: SkillInfo
     @ObservedObject private var viewModel = ChatViewModel.shared
+    @Environment(\.theme) private var theme
 
     var body: some View {
         HStack {
@@ -141,12 +145,12 @@ private struct SkillSettingRow: View {
                 HStack(spacing: 6) {
                     Image(systemName: viewModel.isDefaultSkill(skill) ? "star.fill" : "star")
                         .font(.caption)
-                        .foregroundStyle(viewModel.isDefaultSkill(skill) ? Color.yellow : Color.secondary)
+                        .foregroundStyle(viewModel.isDefaultSkill(skill) ? Color.yellow : theme.secondaryText)
                     Text(skill.name)
                     if skill.source != .opencode {
                         Text(skill.source.label)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.secondaryText)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
                             .background(Color.secondary.opacity(0.15))
@@ -164,7 +168,7 @@ private struct SkillSettingRow: View {
                 if !skill.description.isEmpty {
                     Text(skill.description)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                         .lineLimit(1)
                 }
             }

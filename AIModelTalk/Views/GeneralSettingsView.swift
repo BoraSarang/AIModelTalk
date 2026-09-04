@@ -4,6 +4,7 @@ struct GeneralSettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var updateService = UpdateCheckService.shared
     @State private var axGranted = SelectedTextCapture.isAccessibilityGranted
+    @State private var themeManager = ThemeManager.shared
 
     var body: some View {
         Form {
@@ -14,6 +15,9 @@ struct GeneralSettingsView: View {
                     Text("라이트 모드").tag("light")
                 }
                 .pickerStyle(.radioGroup)
+                .onChange(of: settings.appearance) { _, _ in
+                    DebugLogger.shared.info("THEME", "[FEATURE] 외형 모드 변경 → 테마 동기화: \(settings.appearance)")
+                }
 
                 Picker("액센트", selection: $settings.accentColor) {
                     ForEach(AccentTheme.allCases) { theme in
@@ -28,6 +32,20 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .pickerStyle(.radioGroup)
+
+                // 커스텀 테마 선택 (v0.2.6 축1a) — 설치된 커스텀 테마 즉시 적용
+                if !themeManager.installedThemes.isEmpty {
+                    Picker("커스텀 테마", selection: customThemeBinding) {
+                        Text("없음 (라이트/다크 따름)").tag(CustomTheme?.none)
+                        ForEach(themeManager.installedThemes) { theme in
+                            Text(theme.name).tag(CustomTheme?.some(theme))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    Text("커스텀 테마는 설정 고급에서 관리합니다. 선택 즉시 전체 창에 반영됩니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 accentPreviewCard
 
@@ -180,6 +198,17 @@ struct GeneralSettingsView: View {
     }
 
     /// 액센트 라이브 미리보기 — 선택 즉시 색이 변하는 샘플 요소 (v2.1 T-105)
+    /// 커스텀 테마 선택 바인딩 — 선택 시 즉시 ThemeManager에 반영 (v0.2.6 축1a)
+    private var customThemeBinding: Binding<CustomTheme?> {
+        Binding(
+            get: { themeManager.activeCustomTheme },
+            set: { theme in
+                themeManager.activateCustomTheme(theme)
+                DebugLogger.shared.info("THEME", "[FEATURE] 커스텀 테마 활성화: \(theme?.name ?? "없음")")
+            }
+        )
+    }
+
     /// 보조 모델 선택지 — 활성화된 카탈로그 모델 (provider: id 스펙)
     private var auxiliaryChoices: [(spec: String, label: String)] {
         ModelCatalog.shared.models

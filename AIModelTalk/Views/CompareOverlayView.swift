@@ -6,6 +6,7 @@ import SwiftUI
 /// 나란히(그리드) 표시한다. 각 래인에서 "이 답변으로 대화 계속"을 선택하면 해당 래인을
 /// 세션의 어시스턴트 답변으로 채택한다.
 struct CompareOverlayView: View {
+    @Environment(\.theme) private var theme
     @ObservedObject var viewModel: ChatViewModel
     @ObservedObject private var service = ComparisonService.shared
 
@@ -34,25 +35,25 @@ struct CompareOverlayView: View {
     private var headerBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "rectangle.split.2x1.fill")
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(theme.accentColor)
             Text("병렬 모델 비교")
                 .font(.headline)
             if service.isRunning {
                 ProgressView().controlSize(.small)
                 Text("답변 생성 중…")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             } else if !service.results.isEmpty {
                 Text("완료 — 결과 중 하나를 선택해 대화를 계속하세요")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
             Spacer()
             if viewModel.compareParams.hasAny {
                 Text(paramSummary)
                     .font(.caption2)
                     .monospacedDigit()
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(theme.tertiaryText)
             }
             Button {
                 showSentPanel.toggle()
@@ -126,7 +127,7 @@ struct CompareOverlayView: View {
         ScrollView {
             if service.results.isEmpty {
                 Text("모델을 선택하고 비교를 시작하세요")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .padding(.vertical, 40)
             } else {
                 LazyVGrid(
@@ -151,13 +152,13 @@ struct CompareOverlayView: View {
                     .lineLimit(1)
                 Text(result.model.provider.rawValue)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                 Spacer()
                 if let ttft = result.ttft {
                     Text(String(format: "%.0fms", ttft * 1000))
                         .font(.caption2)
                         .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                 }
             }
             metricsLine(result: result)
@@ -190,8 +191,8 @@ struct CompareOverlayView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity)
-        .background(RoundedRectangle(cornerRadius: DS.radiusCard).fill(.quaternary.opacity(0.2)))
-        .overlay(RoundedRectangle(cornerRadius: DS.radiusCard).strokeBorder(Color.accentColor.opacity(0.3)))
+        .background(RoundedRectangle(cornerRadius: theme.radiusCard).fill(.quaternary.opacity(0.2)))
+        .overlay(RoundedRectangle(cornerRadius: theme.radiusCard).strokeBorder(theme.accentColor.opacity(0.3)))
     }
 
     private func metricsLine(result: ComparisonResult) -> some View {
@@ -199,14 +200,14 @@ struct CompareOverlayView: View {
             if let total = result.totalTime {
                 Label(String(format: "%.1fs", total), systemImage: "clock")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .monospacedDigit()
             }
             if let tps = result.tokensPerSecond {
                 Text(String(format: "%.1f tok/s", tps))
                     .font(.caption2)
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .help("실측 완료 토큰 ÷ 총 응답 시간")
             }
             if let pt = result.promptTokens.map({ SessionTokens.compact($0) }),
@@ -214,13 +215,13 @@ struct CompareOverlayView: View {
                 Label("\(pt)/\(ct)", systemImage: "arrow.up.arrow.down")
                     .font(.caption2)
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .help("실측 토큰 프롬프트/완료")
             }
             if result.answerLength > 0 {
                 Text("\(result.answerLength)자")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .monospacedDigit()
             }
         }
@@ -231,6 +232,7 @@ struct CompareOverlayView: View {
 private struct SentPayloadPanel: View {
     @ObservedObject var viewModel: ChatViewModel
     @ObservedObject var service: ComparisonService
+    @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -248,7 +250,7 @@ private struct SentPayloadPanel: View {
             // 시스템 프롬프트 — 채팅을 발송한 컨텍스트의 시스템 프롬프트 (비밀 아닌 부분만), 마크다운 렌더링 (v0.2.3)
             Text("시스템 프롬프트")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
             MarkdownRenderer(text: systemPromptPreview, isStreaming: false, fixedHeight: 140)
                 .frame(maxWidth: 320)
 
@@ -257,7 +259,7 @@ private struct SentPayloadPanel: View {
             // 래인별 실측 토큰
             Text("래인별 사용량")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
             ForEach(service.results) { result in
                 let pt = result.promptTokens.map { SessionTokens.compact($0) } ?? "—"
                 let ct = result.completionTokens.map { SessionTokens.compact($0) } ?? "—"
@@ -273,7 +275,7 @@ private struct SentPayloadPanel: View {
                     Text(t)
                         .font(.caption2)
                         .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                 }
             }
         }
@@ -299,6 +301,7 @@ private struct SentPayloadPanel: View {
 /// 합성(synthesis) 결과 패널 (T-206) — 판정 모델이 병합한 한 답변
 private struct SynthesisPanel: View {
     @ObservedObject var service: ComparisonService
+    @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -309,12 +312,12 @@ private struct SynthesisPanel: View {
                     ProgressView().controlSize(.small)
                     Text("병합 중…")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                 }
             } else if service.synthesisText.isEmpty {
                 Text("합성 답변이 아직 없습니다. 결과가 모두 준비되면 자동 생성됩니다.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             } else {
                 MarkdownRenderer(text: service.synthesisText, isStreaming: false, fixedHeight: 200)
                     .frame(maxWidth: 360)
@@ -329,6 +332,7 @@ private struct SynthesisPanel: View {
 private struct JudgeModelPicker: View {
     @ObservedObject var service: ComparisonService
     @AppStorage("judgeProviderRaw") private var judgeProviderRaw: String = ""
+    @Environment(\.theme) private var theme
 
     private var providers: [String] {
         var seen = Set<String>()
@@ -346,7 +350,7 @@ private struct JudgeModelPicker: View {
                 .font(.headline)
             Text("선택한 공급자의 API 키가 있으면 해당 공급자를 우선해 판정·합성합니다.")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
                 .frame(maxWidth: 260, alignment: .leading)
             Picker("", selection: $judgeProviderRaw) {
                 Text("자동 (NVIDIA 우선)").tag("")
@@ -367,6 +371,7 @@ private struct DiffPickerPanel: View {
     @ObservedObject var service: ComparisonService
     @State private var lhsIndex: Int = 0
     @State private var rhsIndex: Int = 1
+    @Environment(\.theme) private var theme
 
     private var validResults: [(index: Int, result: ComparisonResult)] {
         service.results.enumerated().filter { $0.element.error == nil && !$0.element.text.isEmpty }.map { ($0.offset, $0.element) }
@@ -404,7 +409,7 @@ private struct DiffPickerPanel: View {
             } else {
                 Text("비교할 성공한 답변이 2개 이상 필요합니다.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
         }
         .padding(14)

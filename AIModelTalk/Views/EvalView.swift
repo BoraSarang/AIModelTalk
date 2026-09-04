@@ -4,6 +4,7 @@ import SwiftUI
 /// 프롬프트×모델 매트릭스를 병렬로 실행해 셀별 TTFT·tok/s·점수(1~10)·회귀를 보여주고,
 /// CSV/Markdown으로 내보낼 수 있다.
 struct EvalView: View {
+    @Environment(\.theme) private var theme
     @ObservedObject private var service = EvalService.shared
     @ObservedObject private var catalog = ModelCatalog.shared
     @ObservedObject private var settings = AppSettings.shared
@@ -40,7 +41,7 @@ struct EvalView: View {
                     .font(.headline)
                 Text("프롬프트 × 모델 매트릭스 · 5-at-a-time 병렬 · 셀별 점수(1~10) · 회귀 추적")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
             Spacer()
             Button {
@@ -60,7 +61,7 @@ struct EvalView: View {
             .buttonStyle(.bordered)
             .disabled(service.cells.isEmpty)
         }
-        .padding(DS.windowInset)
+        .padding(theme.windowInset)
     }
 
     // MARK: - 프롬프트 리스트 편집
@@ -70,7 +71,7 @@ struct EvalView: View {
             HStack(spacing: 6) {
                 Text("프롬프트")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                 TextField("한 줄 프롬프트 입력 후 추가", text: $newPrompt)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
@@ -89,7 +90,7 @@ struct EvalView: View {
                 }
             }
         }
-        .padding(.horizontal, DS.windowInset)
+        .padding(.horizontal, theme.windowInset)
         .padding(.bottom, 6)
     }
 
@@ -105,7 +106,7 @@ struct EvalView: View {
             HStack(spacing: 6) {
                 Text("모델")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                 modelToggleAll
                 ForEach(visibleModels) { model in
                     ModelChip(model: model, selected: service.selectedModelIDs.contains(model.id)) {
@@ -115,7 +116,7 @@ struct EvalView: View {
                 Spacer()
             }
         }
-        .padding(.horizontal, DS.windowInset)
+        .padding(.horizontal, theme.windowInset)
         .padding(.bottom, 8)
     }
 
@@ -169,7 +170,7 @@ struct EvalView: View {
                 if service.history.count > 1 {
                     Text("이전 실행과 비교 표시")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(theme.tertiaryText)
                 }
                 Button("내역 지우기") {
                     service.clearHistory()
@@ -185,8 +186,8 @@ struct EvalView: View {
                 gridTable
             }
         }
-        .padding(.horizontal, DS.windowInset)
-        .padding(.bottom, DS.windowInset)
+        .padding(.horizontal, theme.windowInset)
+        .padding(.bottom, theme.windowInset)
     }
 
     private var emptyState: some View {
@@ -196,7 +197,7 @@ struct EvalView: View {
                 .foregroundStyle(.quaternary)
             Text("프롬프트와 모델을 선택하고 「평가 실행」을 누르세요")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -229,7 +230,7 @@ struct EvalView: View {
             // 프롬프트
             Text(cell.prompt)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
                 .lineLimit(1)
                 .help(cell.prompt)
 
@@ -238,7 +239,7 @@ struct EvalView: View {
             case .idle:
                 Text("대기")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(theme.tertiaryText)
             case .run:
                 TypingIndicatorView()
                     .frame(height: 28)
@@ -251,7 +252,7 @@ struct EvalView: View {
                 metricsRow(cell)
                 Text(cell.text.prefix(120))
                     .font(.caption2)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(theme.primaryText)
                     .lineLimit(3)
             }
 
@@ -262,9 +263,9 @@ struct EvalView: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity)
-        .background(RoundedRectangle(cornerRadius: DS.radiusCard).fill(.quaternary.opacity(0.15)))
-        .overlay(RoundedRectangle(cornerRadius: DS.radiusCard).strokeBorder(
-            cell.state.isFailed ? Color.red.opacity(0.4) : Color.accentColor.opacity(0.25)))
+        .background(RoundedRectangle(cornerRadius: theme.radiusCard).fill(.quaternary.opacity(0.15)))
+        .overlay(RoundedRectangle(cornerRadius: theme.radiusCard).strokeBorder(
+            cell.state.isFailed ? Color.red.opacity(0.4) : theme.accentColor.opacity(0.25)))
     }
 
     private func stateBadge(_ state: EvalCell.EvalState) -> some View {
@@ -293,13 +294,13 @@ struct EvalView: View {
                 Text(String(format: "%.1fs", total))
                     .font(.caption2)
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
             if let tps = cell.tokensPerSecond {
                 Text("\(String(format: "%.1f", tps)) tok/s")
                     .font(.caption2)
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .help("완료 토큰 ÷ 총 시간")
             }
             Spacer()
@@ -311,7 +312,7 @@ struct EvalView: View {
             HStack(spacing: 6) {
                 Text("점수")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                 Picker("", selection: Binding(
                     get: { service.scores[cell.id] },
                     set: { service.setScore(cellID: cell.id, value: $0) }
@@ -343,7 +344,7 @@ struct EvalView: View {
                     .foregroundStyle(.green)
             } else {
                 Text("이전과 동일 (\(previous)점)")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
         }
         .font(.caption2)
@@ -358,6 +359,7 @@ struct EvalView: View {
 
 /// 프롬프트 칩 (제거 버튼 포함)
 private struct PromptChip: View {
+    @Environment(\.theme) private var theme
     let text: String
     let onRemove: () -> Void
     var body: some View {
@@ -379,6 +381,7 @@ private struct PromptChip: View {
 
 /// 모델 칩 (토글)
 private struct ModelChip: View {
+    @Environment(\.theme) private var theme
     let model: AIModel
     let selected: Bool
     let onToggle: () -> Void
@@ -386,7 +389,7 @@ private struct ModelChip: View {
         Button(action: onToggle) {
             HStack(spacing: 4) {
                 Image(systemName: selected ? "checkmark.square.fill" : "square")
-                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(selected ? theme.accentColor : theme.secondaryText)
                 dsDot(Color(model.provider.accentColor))
                 Text(model.displayName)
                     .font(.caption)
@@ -394,8 +397,8 @@ private struct ModelChip: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(Capsule().fill(selected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.2)))
-            .overlay(Capsule().strokeBorder(Color.accentColor.opacity(selected ? 0.4 : 0)))
+            .background(Capsule().fill(selected ? theme.accentColor.opacity(0.12) : theme.secondaryText.opacity(0.2)))
+            .overlay(Capsule().strokeBorder(theme.accentColor.opacity(selected ? 0.4 : 0)))
         }
         .buttonStyle(.plain)
     }
@@ -403,6 +406,7 @@ private struct ModelChip: View {
 
 /// 내보내기 시트 — CSV/Markdown 미리보기 + 저장
 private struct EvaluatorExportView: View {
+    @Environment(\.theme) private var theme
     @ObservedObject var service: EvalService
     @Environment(\.dismiss) private var dismiss
     @State private var format: ExportFormat = .csv

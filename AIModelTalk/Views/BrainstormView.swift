@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 브레인스토밍 도구 — 주제 → 아이디어 카드 누적 (v2.0 T-80)
 struct BrainstormView: View {
+    @Environment(\.theme) private var theme
     @ObservedObject private var service = BrainstormService.shared
     @ObservedObject private var viewModel = ChatViewModel.shared
     @ObservedObject private var settings = AppSettings.shared
@@ -24,7 +25,7 @@ struct BrainstormView: View {
                             generatingCard
                         }
                     }
-                    .padding(DS.windowInset)
+                    .padding(theme.windowInset)
                 }
             }
         }
@@ -71,7 +72,7 @@ struct BrainstormView: View {
                 }
             }
         }
-        .padding(DS.windowInset)
+        .padding(theme.windowInset)
     }
 
     /// 모델 선택 — 현재 대화 모델 기본, 공급자별 메뉴 (T-85 엔트리 재사용)
@@ -114,7 +115,7 @@ struct BrainstormView: View {
                 .foregroundStyle(.quaternary)
             Text("주제를 입력하고 생성을 누르세요")
                 .font(.title3)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
             Text("아이디어가 카드로 누적되며, '다른 관점으로 더'로 방향을 바꿔 계속 확장할 수 있습니다.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
@@ -130,7 +131,7 @@ struct BrainstormView: View {
             if !service.streamingText.isEmpty {
                 Text(service.streamingText.suffix(400))
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .lineLimit(12)
             } else {
                 TypingIndicatorView().padding(.vertical, 6)
@@ -138,14 +139,15 @@ struct BrainstormView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: DS.radiusCard).fill(.regularMaterial))
-        .overlay(RoundedRectangle(cornerRadius: DS.radiusCard).strokeBorder(Color.accentColor.opacity(0.4)))
+        .background(RoundedRectangle(cornerRadius: theme.radiusCard).fill(theme.cardBackground))
+        .overlay(RoundedRectangle(cornerRadius: theme.radiusCard).strokeBorder(theme.accentColor.opacity(0.4)))
     }
 }
 
 // MARK: - 아이디어 카드
 
 private struct IdeaCardView: View {
+    @Environment(\.theme) private var theme
     let idea: BrainstormIdea
     @State private var copied = false
 
@@ -157,8 +159,8 @@ private struct IdeaCardView: View {
                         .font(.caption2)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.accentColor.opacity(0.15)))
-                        .foregroundStyle(Color.accentColor)
+                        .background(Capsule().fill(theme.accentColor.opacity(0.15)))
+                        .foregroundStyle(theme.accentColor)
                 }
                 Spacer()
                 Button {
@@ -180,7 +182,7 @@ private struct IdeaCardView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: DS.radiusCard).fill(.regularMaterial))
-        .overlay(RoundedRectangle(cornerRadius: DS.radiusCard).strokeBorder(Color.secondary.opacity(0.15)))
+        .background(RoundedRectangle(cornerRadius: theme.radiusCard).fill(theme.cardBackground))
+        .overlay(RoundedRectangle(cornerRadius: theme.radiusCard).strokeBorder(theme.secondaryText.opacity(0.15)))
     }
 }

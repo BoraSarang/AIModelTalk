@@ -37,6 +37,7 @@ struct SettingsView: View {
             tab(.hotkey) { HotkeySettingsView() }
         }
         .frame(minWidth: 700, minHeight: 520)
+        .background(theme.primaryBackground)
         .padding(0)
     }
 

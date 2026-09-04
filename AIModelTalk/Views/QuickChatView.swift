@@ -130,6 +130,7 @@ private struct QuickScrollSnapshot: Equatable {
 }
 
 struct QuickChatView: View {
+    @Environment(\.theme) private var theme
     @ObservedObject private var viewModel = ChatViewModel.shared
     @ObservedObject private var settings = AppSettings.shared
     @State private var input: String = ""
@@ -172,7 +173,7 @@ struct QuickChatView: View {
         .frame(width: 500, height: 540)
         .background(.regularMaterial)
         // borderless 창의 모서리·그림자는 콘텐츠 알파에서 따라옴 (v2.1 T-108)
-        .clipShape(RoundedRectangle(cornerRadius: DS.radiusPanel, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: theme.radiusPanel, style: .continuous))
         .appAccentTint(settings.accentColor)
         // 전 방향 safe area 해제 — macOS 26 창 하단 안전 영역 여백이 입력창 아래
         // 반투명 빈 스트립으로 남던 문제 수정 (v2.1 T-107). 패널은 부유창이라 하단 해제가 안전
@@ -225,7 +226,7 @@ struct QuickChatView: View {
             } label: {
                 Image(systemName: "square.and.arrow.down")
                     .font(.system(size: 13))
-                    .foregroundStyle(canSave ? Color.accentColor : Color.secondary.opacity(0.4))
+                    .foregroundStyle(canSave ? theme.accentColor : theme.secondaryText.opacity(0.4))
             }
             .buttonStyle(.plain)
             .disabled(!canSave)
@@ -235,7 +236,7 @@ struct QuickChatView: View {
                 onClose()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
             .buttonStyle(.plain)
         }
@@ -257,16 +258,16 @@ struct QuickChatView: View {
                     VStack(spacing: 14) {
                         // 액센트 그라디언트 타일 (v2.1 T-103)
                         ZStack {
-                            RoundedRectangle(cornerRadius: DS.radiusPanel)
+                            RoundedRectangle(cornerRadius: theme.radiusPanel)
                                 .fill(LinearGradient(
-                                    colors: [Color.accentColor, Color.accentColor.opacity(0.65)],
+                                    colors: [theme.accentColor, theme.accentColor.opacity(0.65)],
                                     startPoint: .topLeading, endPoint: .bottomTrailing))
                             Image(systemName: "bolt.horizontal.circle.fill")
                                 .font(.system(size: 24, weight: .medium))
                                 .foregroundStyle(.white)
                         }
                         .frame(width: 54, height: 54)
-                        .shadow(color: Color.accentColor.opacity(0.25), radius: 8, x: 0, y: 4)
+                        .shadow(color: theme.accentColor.opacity(0.25), radius: 8, x: 0, y: 4)
 
                         Text("빠르게 질문하고 답을 받으세요")
                             .font(.subheadline.weight(.medium))
@@ -327,8 +328,8 @@ struct QuickChatView: View {
                 .font(.caption)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(Color.primary.opacity(0.05), in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+                .background(theme.primaryText.opacity(0.05), in: Capsule())
+                .overlay(Capsule().strokeBorder(theme.primaryText.opacity(0.08)))
         }
         .buttonStyle(.plain)
         .help("클릭하면 입력창에 채워집니다")
@@ -347,10 +348,10 @@ struct QuickChatView: View {
                 .onSubmit(send)
                 .padding(.horizontal, 11)
                 .padding(.vertical, 8)
-                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: DS.radiusBubble))
+                .background(theme.primaryText.opacity(0.06), in: RoundedRectangle(cornerRadius: theme.radiusBubble))
                 .overlay(
-                    RoundedRectangle(cornerRadius: DS.radiusBubble)
-                        .strokeBorder(Color.accentColor.opacity(inputFocused ? 0.5 : 0), lineWidth: 1.5)
+                    RoundedRectangle(cornerRadius: theme.radiusBubble)
+                        .strokeBorder(theme.accentColor.opacity(inputFocused ? 0.5 : 0), lineWidth: 1.5)
                 )
 
             if viewModel.isLoading {
@@ -369,7 +370,7 @@ struct QuickChatView: View {
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 22))
-                        .foregroundStyle(canSendNow ? Color.accentColor : Color.secondary.opacity(0.4))
+                        .foregroundStyle(canSendNow ? theme.accentColor : theme.secondaryText.opacity(0.4))
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSendNow)

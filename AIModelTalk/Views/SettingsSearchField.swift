@@ -8,12 +8,13 @@ import SwiftUI
 struct SettingsSearchField: View {
     let placeholder: String
     @Binding var text: String
+    @Environment(\.theme) private var theme
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
             TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
             if !text.isEmpty {
@@ -22,14 +23,14 @@ struct SettingsSearchField: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color(nsColor: .quaternaryLabelColor))
-        .clipShape(RoundedRectangle(cornerRadius: DS.radiusControl))
+        .background(theme.inputBackground)
+        .clipShape(RoundedRectangle(cornerRadius: theme.radiusControl))
     }
 }

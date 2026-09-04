@@ -25,6 +25,9 @@ final class AppSettings: ObservableObject {
         didSet {
             UserDefaults.standard.set(appearance, forKey: "appearance")
             applyAppearance()
+            // 테마 시스템 브리지 — NSApp 외형과 ThemeManager.currentTheme 동기화 (v0.2.6 축1a)
+            let mode: AppearanceMode = appearance == "dark" ? .dark : (appearance == "light" ? .light : .system)
+            ThemeManager.shared.syncAppearanceMode(mode)
         }
     }
 

@@ -86,6 +86,7 @@ struct ScrollViewFinder: NSViewRepresentable {
 
 struct MessageListView: View {
     @ObservedObject var viewModel: ChatViewModel
+    @Environment(\.theme) private var theme
 
     @State private var lastMessageCount = 0
     @State private var pendingScrollWorks: [DispatchWorkItem] = []
@@ -124,7 +125,7 @@ struct MessageListView: View {
                     .frame(width: 36, height: 36)
                     .background(
                         Circle()
-                            .fill(Color.accentColor)
+                            .fill(theme.accentColor)
                             .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
                     )
                     .padding(.trailing, 16)
@@ -399,10 +400,10 @@ struct MessageListView: View {
         VStack(spacing: 8) {
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 40))
-                .foregroundStyle(.quaternary)
+                .foregroundStyle(theme.tertiaryText)
             Text("메시지를 입력해 대화를 시작하세요")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
         }
         .frame(maxWidth: .infinity)
         // 뷰포트를 채워 수직 중앙에 배치 (T-41) — 초기 0일 때는 최소값 폴백

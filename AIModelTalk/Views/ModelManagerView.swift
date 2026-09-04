@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Ollama 모델 관리 뷰 — 설치/삭제/진행률 (v1.8 T-70d)
 struct ModelManagerView: View {
+    @Environment(\.theme) private var theme
     @ObservedObject private var ollamaService = OllamaService.shared
     @ObservedObject private var catalog = ModelCatalog.shared
     @State private var newModelName = ""
@@ -13,7 +14,7 @@ struct ModelManagerView: View {
         VStack(alignment: .leading, spacing: 16) {
             // 헤더
             HStack {
-                dsDot(Color.teal, size: DS.dotLarge)
+                dsDot(Color.teal, size: theme.dotLarge)
                 Text("Ollama 모델 관리")
                     .font(.headline)
                 Spacer()
@@ -35,13 +36,13 @@ struct ModelManagerView: View {
             if installedModels.isEmpty && !isLoading {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("설치된 모델이 없습니다")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                     Text("아래에서 모델을 설치하거나, Ollama 서버가 실행 중인지 확인하세요.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(DS.windowInset)
+                .padding(theme.windowInset)
             } else {
                 List {
                     ForEach(installedModels, id: \.self) { modelName in
@@ -55,7 +56,7 @@ struct ModelManagerView: View {
                                         .controlSize(.small)
                                     Text("설치 중… \(Int(progress * 100))%")
                                         .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(theme.secondaryText)
                                 }
                             }
                             Spacer()
@@ -100,7 +101,7 @@ struct ModelManagerView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("추천 무료 모델")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(recommendedModels, id: \.self) { model in
@@ -121,7 +122,7 @@ struct ModelManagerView: View {
                     .foregroundStyle(.red)
             }
         }
-        .padding(DS.windowInset)
+        .padding(theme.windowInset)
         .frame(minWidth: 520, minHeight: 480)
         .onAppear {
             Task { await loadInstalledModels() }

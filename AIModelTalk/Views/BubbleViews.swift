@@ -26,6 +26,7 @@ struct UserBubbleView: View {
     let message: ChatMessage
     var sidePadding: CGFloat = 16
     var onFork: (() -> Void)? = nil
+    @Environment(\.theme) private var theme
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 6) {
@@ -41,8 +42,8 @@ struct UserBubbleView: View {
                                     .resizable()
                                     .aspectRatio(contentMode: .fill)
                                     .frame(maxWidth: 180, maxHeight: 140)
-                                    .clipShape(RoundedRectangle(cornerRadius: DS.radiusCard))
-                                    .overlay(RoundedRectangle(cornerRadius: DS.radiusCard).strokeBorder(Color.white.opacity(0.35)))
+                                    .clipShape(RoundedRectangle(cornerRadius: theme.radiusCard))
+                                    .overlay(RoundedRectangle(cornerRadius: theme.radiusCard).strokeBorder(Color.white.opacity(0.35)))
                                     .help(attachment.fileName ?? "첨부 이미지")
                             }
                         }
@@ -55,8 +56,8 @@ struct UserBubbleView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(
-                        RoundedRectangle(cornerRadius: DS.radiusBubble)
-                            .fill(DS.userBubbleGradient)
+                        RoundedRectangle(cornerRadius: theme.radiusBubble)
+                            .fill(theme.userBubbleGradient)
                     )
             }
 
@@ -88,9 +89,10 @@ struct AssistantBubbleView: View {
     var onFork: (() -> Void)? = nil
     @State private var toastMsg = ""
     @State private var showToast = false
+    @Environment(\.theme) private var theme
 
     private var providerColor: Color {
-        message.provider?.accentSwiftUIColor ?? .gray
+        message.provider?.accentSwiftUIColor ?? theme.secondaryText
     }
 
     var body: some View {
@@ -135,7 +137,7 @@ struct AssistantBubbleView: View {
                     TypingIndicatorView()
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                        .background(RoundedRectangle(cornerRadius: DS.radiusBubble).fill(.regularMaterial))
+                        .background(RoundedRectangle(cornerRadius: theme.radiusBubble).fill(theme.cardBackground))
                 } else {
                     Group {
                         MarkdownRenderer(text: message.content, isStreaming: message.isStreaming)
@@ -143,11 +145,11 @@ struct AssistantBubbleView: View {
                     .font(.system(size: 13))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: DS.radiusBubble).fill(.regularMaterial))
+                    .background(RoundedRectangle(cornerRadius: theme.radiusBubble).fill(theme.cardBackground))
                     .overlay(alignment: .topLeading) {
                         if message.isError {
-                            RoundedRectangle(cornerRadius: DS.radiusBubble)
-                                .strokeBorder(Color.red.opacity(0.5), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: theme.radiusBubble)
+                                .strokeBorder(theme.errorColor.opacity(0.5), lineWidth: 1)
                         }
                     }
                 }
@@ -251,7 +253,7 @@ struct AssistantBubbleView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
                     .background(.regularMaterial, in: Capsule())
-                    .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+                    .shadow(color: theme.shadowColor.opacity(0.1), radius: 4, y: 2)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .padding(.bottom, 4)
             }
@@ -293,6 +295,7 @@ struct TypingIndicatorView: View {
 struct ToolRunCardView: View {
     let record: ToolLoopService.ExecutionRecord
     @State private var expanded = false
+    @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -342,6 +345,6 @@ struct ToolRunCardView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: DS.radiusCard).fill(.quaternary.opacity(0.4)))
+        .background(RoundedRectangle(cornerRadius: theme.radiusCard).fill(theme.cardBackground.opacity(0.6)))
     }
 }

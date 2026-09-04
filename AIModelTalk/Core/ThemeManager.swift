@@ -203,6 +203,13 @@ public final class ThemeManager {
         UserDefaults.standard.set(mode.rawValue, forKey: "appearanceMode")
     }
 
+    /// AppSettings.appearance 브리지용 — NSApp 외형 변경 시 테마 동기화 (v0.2.6 축1a)
+    func syncAppearanceMode(_ mode: AppearanceMode) {
+        guard appearanceMode != mode else { return }
+        appearanceMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: "appearanceMode")
+    }
+
     /// 액센트 색상 따름 설정
     func setFollowsSystemAccent(_ follows: Bool) {
         followsSystemAccent = follows

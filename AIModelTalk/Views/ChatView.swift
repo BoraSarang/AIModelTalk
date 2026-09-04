@@ -9,6 +9,7 @@ struct ChatView: View {
     @State private var isAlwaysOnTop = false
     @State private var showRenameSheet = false
     @State private var renameText = ""
+    @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,6 +24,7 @@ struct ChatView: View {
             Divider()
             ChatInputBarView(viewModel: viewModel)
         }
+        .background(theme.primaryBackground)
         .navigationTitle(viewModel.currentSession?.title ?? "대화")
         // MCP 도구 권한 확인 (v2.4 T-120)
         .confirmationDialog(
@@ -50,7 +52,7 @@ struct ChatView: View {
                         viewModel.toggleIncognito()
                     } label: {
                         Image(systemName: (viewModel.currentSession?.isIncognito ?? false) ? "eye.slash.fill" : "eye.slash")
-                            .foregroundStyle((viewModel.currentSession?.isIncognito ?? false) ? Color.orange : .secondary)
+                            .foregroundStyle((viewModel.currentSession?.isIncognito ?? false) ? theme.warningColor : theme.secondaryText)
                     }
                     .help("인코그니토 — 이 대화는 전역 기억을 사용/저장하지 않음")
                     Button {
@@ -66,7 +68,7 @@ struct ChatView: View {
                     toggleAlwaysOnTop()
                 } label: {
                     Image(systemName: isAlwaysOnTop ? "pin.fill" : "pin")
-                        .foregroundStyle(isAlwaysOnTop ? Color.accentColor : .secondary)
+                        .foregroundStyle(isAlwaysOnTop ? theme.accentColor : theme.secondaryText)
                 }
                 .help(isAlwaysOnTop ? "항상 위 해제" : "항상 위에 고정")
             }
@@ -113,13 +115,13 @@ struct ChatView: View {
     private func updateBanner(_ release: ReleaseInfo) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.down.circle.fill")
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(theme.accentColor)
             VStack(alignment: .leading, spacing: 2) {
                 Text("새 버전 \(release.version) 사용 가능")
                     .font(.caption.bold())
                 Text("현재 \(updateService.currentVersion) · GitHub에서 다운로드")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
             Spacer()
             Button("업데이트") {
@@ -130,7 +132,7 @@ struct ChatView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(Color.accentColor.opacity(0.1))
+        .background(theme.accentColor.opacity(0.1))
     }
 }
 

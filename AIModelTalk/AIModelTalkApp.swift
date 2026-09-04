@@ -6,6 +6,8 @@ struct AIModelTalkApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     /// 액센트 테마 — 모든 Scene 루트에 공통 적용 (v2.1 T-100)
     @ObservedObject private var settings = AppSettings.shared
+    /// 테마 매니저 — @Observable로 currentTheme 변경 감지, 모든 Scene에 Environment 주입 (v0.2.6 축1a)
+    @State private var themeManager = ThemeManager.shared
 
     init() {
         // 커스텀 엔드포인트 .standard → 고정 스위트 1회 이전 (v3.8.1 T-1008)
@@ -22,6 +24,7 @@ struct AIModelTalkApp: App {
             ContentView()
                 .frame(minWidth: 630, minHeight: 420)
                 .appAccentTint(settings.accentColor)
+                .themeEnvironment(themeManager)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -37,6 +40,7 @@ struct AIModelTalkApp: App {
         Window("벤치마크 랭킹", id: "benchmark") {
             BenchmarkView()
                 .appAccentTint(settings.accentColor)
+                .themeEnvironment(themeManager)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -45,6 +49,7 @@ struct AIModelTalkApp: App {
         Window("브레인스토밍", id: "brainstorm") {
             BrainstormView()
                 .appAccentTint(settings.accentColor)
+                .themeEnvironment(themeManager)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -53,6 +58,7 @@ struct AIModelTalkApp: App {
         Window("비교 모드", id: "comparison") {
             ComparisonView()
                 .appAccentTint(settings.accentColor)
+                .themeEnvironment(themeManager)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -61,6 +67,7 @@ struct AIModelTalkApp: App {
         Window("스플릿 채팅", id: "splitChat") {
             SplitChatView()
                 .appAccentTint(settings.accentColor)
+                .themeEnvironment(themeManager)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -69,6 +76,7 @@ struct AIModelTalkApp: App {
         Window("평가 그리드", id: "eval") {
             EvalView()
                 .appAccentTint(settings.accentColor)
+                .themeEnvironment(themeManager)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -84,6 +92,7 @@ struct AIModelTalkApp: App {
         Window("디버그 패널", id: "debug") {
             DebugPanelView()
                 .appAccentTint(settings.accentColor)
+                .themeEnvironment(themeManager)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -92,7 +101,17 @@ struct AIModelTalkApp: App {
         Settings {
             SettingsView()
                 .appAccentTint(settings.accentColor)
+                .themeEnvironment(themeManager)
         }
+    }
+}
+
+// MARK: - 테마 Environment 주입 편의
+
+extension View {
+    /// ThemeManager.currentTheme를 @Environment(\.theme)로 주입 — @Observable 추적로 테마 변경 시 자동 갱신 (v0.2.6 축1a)
+    func themeEnvironment(_ manager: ThemeManager) -> some View {
+        environment(\.theme, ThemeBox(manager.currentTheme))
     }
 }
 

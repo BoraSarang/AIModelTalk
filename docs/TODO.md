@@ -1,26 +1,30 @@
-# TODO — AIModelTalk v0.2.5
+# TODO — AIModelTalk v0.2.6 ~ v0.3.0
 
-v0.2.5 "Osaurus 스타일 테마 인프라 & 컴포넌트 라이브러리". 상세: `docs/plans/PLAN_v0.2.5_macos.md`.
-범위 확정: 테마 시스템(Light/Dark/Custom) + 20+ 컴포넌트 라이브러리 + 글라스 지원 + 마스코트 캐릭터.
+v0.2.6+ "AI 채팅 기능 전면 실현". 상세: `docs/plans/PLAN_v0.2.6_macos.md`.
+범위 확정: 축1 테마 적용 / 축2 크레딧·비용(추적+표시) / 축3 로컬 폴더·파일 접근 / 축4 용도 모드·이미지 생성.
 
 ## 진행 중
 
-(없음 — v0.2.5 완료)
+- [ ] 축1a: ThemeManager 복구 + 앱 루트 테마 주입 + 설정 테마 선택 UI
+- [ ] 축1b: 16개 뷰 테마/글라스 적용 + DS.* 제거
+- [ ] 축2: AIModel 가격 필드 + ModelCatalog 가격 테이블 + 비용 계산($0.00 제거) + 비용 UI
+- [ ] 축3a: workspaceFolder 지정(NSOpenPanel) + 시스템 프롬프트 주입
+- [ ] 축3b: 내장 filesystem 도구(list_dir/read_file/write_file/edit_file) + 샌드박스 + 권한 게이트
+- [ ] 축4a: 용도 모드 분리(채팅/이미지/코딩)
+- [ ] 축4b: DALL-E/이미지 생성 파이프라인(ImageClient 신규)
 
 ## 백로그
 
 - [ ] T-320 코드 블록 Splash SPM 연동 (선택 — regex 폴백 사용 중)
+- [ ] T-* 크레딧 충전/잔액 백엔드 연동 (백엔드 준비 시)
 
-## 완료 (v0.2.5)
+## 완료 (v0.2.6+)
 
-- [x] Phase 1: 테마 인프라 구축 — ThemeProtocol(50+ 토큰), LightTheme/DarkTheme, ThemeBox(@dynamicMemberLookup), ThemeManager, CustomTheme, ThemeConfigurationStore, DesignSystem 호환 레이어 (2026-09-04)
-- [x] Phase 2: 공통 컴포넌트 22개 — MinimalCard, GradientButton, FittedSheetFrame, GlassBackground, AnimatedTabSelector, CodeBlockView, FloatingInputCard, EmptyStateView, ToastManager 등 (2026-09-04)
-- [x] 빌드 에러 15건 수정 — environment key, 중복 struct, model property, animation var/func 통일 (2026-09-04)
-- [x] Phase 3-1: SettingsView → .formStyle(.grouped) + theme environment + minHeight: 520 (2026-09-05)
-- [x] Phase 3-2: MCPSettingsView → ProviderCard 2열 그리드 + 헬스 스냅샷 카드 (2026-09-05)
-- [x] Phase 3-3: MCPProviderConnectView → 테마 컴포넌트 + 단계 표시기 (2026-09-05)
-- [x] Phase 3-4: ChatSession.themeID?: String 세션별 테마 지원 (2026-09-05)
-- [x] CharacterIllustrations SF Symbol 폴백 적용 (2026-09-05)
+(진행 예정)
+
+## 완료 (v0.2.5까지)
+
+- [x] v0.2.5 Osaurus 테마 인프라 + 컴포넌트 22개 + Phase 3-1~4 일부 적용 (2026-09-05)
 
 ## 완료 (v0.2.3까지)
 

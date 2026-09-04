@@ -10,6 +10,7 @@ struct SidebarView: View {
     @Binding var showRenameSheet: Bool
     @Binding var renamingSession: ChatSession?
     @Binding var renameText: String
+    @Environment(\.theme) private var theme
 
     /// 드롭 호버 중인 타깃 행 + 삽입 위치(위/아래) — 인디케이터 렌더링용 (v2.1 T-99)
     @State private var hoverDropTargetID: UUID?
@@ -142,12 +143,12 @@ struct SidebarView: View {
             // 분기 세션 인디케이터 (T-73)
             Image(systemName: session.parentSessionID != nil ? "arrow.triangle.branch" : "bubble.left")
                 .font(.caption)
-                .foregroundStyle(session.parentSessionID != nil ? Color.accentColor : .secondary)
+                .foregroundStyle(session.parentSessionID != nil ? theme.accentColor : theme.secondaryText)
                 .help(session.parentSessionID != nil ? "분기된 대화" : "")
             Text(session.title)
                 .lineLimit(1)
         }
-        .background(hoverDropTargetID == session.id ? Color.accentColor.opacity(0.08) : Color.clear)
+        .background(hoverDropTargetID == session.id ? theme.accentColor.opacity(0.08) : Color.clear)
         .tag(session.id)
         // 드래그 프리뷰에 대화명 표시 — UUID만 보이던 문제 수정 (v2.1 피드백)
         // 주의: onTapGesture를 draggable과 병용하면 제스처 충돌로 드래그가 불능 — 클릭은 List 네이티브 선택 사용
@@ -161,7 +162,7 @@ struct SidebarView: View {
             .font(.callout)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: DS.radiusControl))
+            .background(theme.cardBackground, in: RoundedRectangle(cornerRadius: theme.radiusControl))
         }
         // 행 위/아래 절반을 드롭 존으로 — 목록 중간 삽입 지원 (v2.1 T-99).
         // background에 두어 콘텐츠 클릭·우클릭이 그대로 통과한다.
@@ -177,7 +178,7 @@ struct SidebarView: View {
         .overlay(alignment: insertAbove ? .top : .bottom) {
             if hoverDropTargetID == session.id {
                 Rectangle()
-                    .fill(Color.accentColor)
+                    .fill(theme.accentColor)
                     .frame(height: 2)
                     .allowsHitTesting(false)
             }

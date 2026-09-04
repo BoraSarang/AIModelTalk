@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ModelPickerPopover: View {
     @ObservedObject var viewModel: ChatViewModel
+    @Environment(\.theme) private var theme
 
     @State private var modelSearchText = ""
     @State private var showModelPicker = false
@@ -21,15 +22,15 @@ struct ModelPickerPopover: View {
             HStack(spacing: 4) {
                 Circle()
                     .fill(viewModel.selectedModel.provider.accentSwiftUIColor)
-                    .frame(width: DS.dotStandard, height: DS.dotStandard)
+                    .frame(width: theme.dotStandard, height: theme.dotStandard)
                 Text(viewModel.selectedModel.label)
                     .font(.callout)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(theme.primaryText)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Image(systemName: "chevron.down")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
         }
         .buttonStyle(.plain)
@@ -57,7 +58,7 @@ struct ModelPickerPopover: View {
                     if !anyMatch && !modelSearchText.trimmingCharacters(in: .whitespaces).isEmpty {
                         Text("'\(modelSearchText)'에 일치하는 모델이 없습니다")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.secondaryText)
                             .padding(.top, 16)
                     } else {
                         // 내장 공급자 + 커스텀 엔드포인트별 섹션 (v1.9 T-85)
@@ -75,7 +76,7 @@ struct ModelPickerPopover: View {
             }
         }
         .frame(width: 300, height: 320)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(theme.cardBackground)
         .onAppear {
             if cachedEntries.isEmpty {
                 cachedEntries = ProviderEntry.currentList()
@@ -116,8 +117,8 @@ struct ModelPickerPopover: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .background(Color(nsColor: .quaternaryLabelColor))
-        .clipShape(RoundedRectangle(cornerRadius: DS.radiusControl))
+        .background(theme.inputBackground)
+        .clipShape(RoundedRectangle(cornerRadius: theme.radiusControl))
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
     }
@@ -125,11 +126,11 @@ struct ModelPickerPopover: View {
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.caption.bold())
-            .foregroundStyle(.primary)
+            .foregroundStyle(theme.primaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(DS.sectionHeaderFill)
+            .background(theme.sectionHeaderFill)
     }
 
     private func popoverRow(_ model: AIModel) -> some View {
@@ -148,13 +149,13 @@ struct ModelPickerPopover: View {
                     .frame(width: 16)
                 Text(rowLabel)
                     .font(.callout)
-                    .foregroundStyle(isSel ? selColor : .primary)
+                    .foregroundStyle(isSel ? selColor : theme.primaryText)
                     .fontWeight(isSel ? .semibold : .regular)
                 Spacer()
                 if model.supportsVision {
                     Image(systemName: "eye")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                         .help("이미지(멀티모달) 지원 모델")
                 }
             }

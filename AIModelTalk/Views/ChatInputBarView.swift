@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct ChatInputBarView: View {
     @ObservedObject var viewModel: ChatViewModel
     @ObservedObject private var settings = AppSettings.shared
+    @Environment(\.theme) private var theme
 
     @State private var keyMonitor: Any?
     @State private var showFileImporter = false
@@ -49,8 +50,8 @@ struct ChatInputBarView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: DS.radiusBubble).fill(Color(nsColor: .controlBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: DS.radiusBubble).strokeBorder(Color(nsColor: .separatorColor)))
+                .background(RoundedRectangle(cornerRadius: theme.radiusBubble).fill(theme.inputBackground))
+                .overlay(RoundedRectangle(cornerRadius: theme.radiusBubble).strokeBorder(theme.inputBorder))
 
             // 주 라인 — 자주 쓰는 것만 (모델·스킬·첨부·웹) + ⋯ 더보기
             HStack(alignment: .center, spacing: 12) {
@@ -87,10 +88,10 @@ struct ChatInputBarView: View {
                                 Text("웹")
                                     .font(.caption)
                             }
-                            .foregroundStyle(viewModel.webSearchForNextSend ? Color.accentColor : Color.secondary)
+                            .foregroundStyle(viewModel.webSearchForNextSend ? theme.accentColor : theme.secondaryText)
                             .padding(.horizontal, 4)
-                            .background(viewModel.webSearchForNextSend ? Color.accentColor.opacity(0.15) : .clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .background(viewModel.webSearchForNextSend ? theme.accentColor.opacity(0.15) : .clear)
+                            .clipShape(RoundedRectangle(cornerRadius: theme.inputCornerRadius))
                         }
                         .buttonStyle(.plain)
                         .help(viewModel.webSearchForNextSend ? "웹 검색 켜짐 — 이번 전송에 적용" : "이번 전송에 웹 검색 사용")
@@ -142,7 +143,7 @@ struct ChatInputBarView: View {
                     } label: {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 24))
-                            .foregroundStyle(viewModel.canSend ? Color.accentColor : Color.secondary.opacity(0.4))
+                            .foregroundStyle(viewModel.canSend ? theme.accentColor : theme.secondaryText.opacity(0.4))
                     }
                     .buttonStyle(.plain)
                     .disabled(!viewModel.canSend)
@@ -239,8 +240,8 @@ struct ChatInputBarView: View {
                 .frame(width: 320, height: 120)
                 .scrollContentBackground(.hidden)
                 .padding(4)
-                .background(RoundedRectangle(cornerRadius: DS.radiusControl).fill(Color(nsColor: .textBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: DS.radiusControl).strokeBorder(Color(nsColor: .separatorColor)))
+                .background(RoundedRectangle(cornerRadius: theme.radiusControl).fill(theme.inputBackground))
+                .overlay(RoundedRectangle(cornerRadius: theme.radiusControl).strokeBorder(theme.inputBorder))
         }
         .padding(12)
     }
@@ -258,8 +259,8 @@ struct ChatInputBarView: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: thumb, height: thumb)
-                                .clipShape(RoundedRectangle(cornerRadius: DS.radiusCard))
-                                .overlay(RoundedRectangle(cornerRadius: DS.radiusCard).strokeBorder(Color(nsColor: .separatorColor)))
+                                .clipShape(RoundedRectangle(cornerRadius: theme.radiusCard))
+                                .overlay(RoundedRectangle(cornerRadius: theme.radiusCard).strokeBorder(theme.inputBorder))
                         }
                         // 닫기 오버레이 — 항상 보이는 검은 반투명 원형 배경 + 흰 x (v0.2.1 시인성 강화)
                         Button {
@@ -290,16 +291,16 @@ struct ChatInputBarView: View {
                         }
                         .foregroundStyle(.secondary)
                         .frame(width: 72, height: 72)
-                        .background(RoundedRectangle(cornerRadius: DS.radiusCard).fill(Color(nsColor: .controlBackgroundColor)))
-                        .overlay(RoundedRectangle(cornerRadius: DS.radiusCard).strokeBorder(Color(nsColor: .separatorColor), style: StrokeStyle(lineWidth: 1, dash: [4])))
+                        .background(RoundedRectangle(cornerRadius: theme.radiusCard).fill(theme.inputBackground))
+                        .overlay(RoundedRectangle(cornerRadius: theme.radiusCard).strokeBorder(theme.inputBorder, style: StrokeStyle(lineWidth: 1, dash: [4])))
                     }
                     .buttonStyle(.plain)
                 }
             }
             .padding(4)
         }
-        .background(RoundedRectangle(cornerRadius: DS.radiusBubble).fill(Color(nsColor: .controlBackgroundColor).opacity(0.5)))
-        .overlay(RoundedRectangle(cornerRadius: DS.radiusBubble).strokeBorder(Color(nsColor: .separatorColor)))
+        .background(RoundedRectangle(cornerRadius: theme.radiusBubble).fill(theme.inputBackground.opacity(0.5)))
+        .overlay(RoundedRectangle(cornerRadius: theme.radiusBubble).strokeBorder(theme.inputBorder))
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {

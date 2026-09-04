@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct BenchmarkView: View {
+    @Environment(\.theme) private var theme
     @ObservedObject private var service = BenchmarkService.shared
     @ObservedObject private var catalog = ModelCatalog.shared
     @ObservedObject private var settings = AppSettings.shared
@@ -26,7 +27,7 @@ struct BenchmarkView: View {
                     .font(.headline)
                 Text("TTFT(첫 토큰 도달 시간) 기준 정렬 · 측정된 모델만 표시")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
             Spacer()
             Button {
@@ -41,7 +42,7 @@ struct BenchmarkView: View {
             }
             .disabled(service.isRunning || configuredModels.isEmpty)
         }
-        .padding(DS.windowInset)
+        .padding(theme.windowInset)
     }
 
     private var emptyState: some View {
@@ -51,10 +52,10 @@ struct BenchmarkView: View {
                 .foregroundStyle(.quaternary)
             Text("아직 측정된 모델이 없습니다")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
             Text("「전체 벤치마크」를 눌러 측정을 시작하세요")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(theme.tertiaryText)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -63,7 +64,7 @@ struct BenchmarkView: View {
         Table(service.rankedModels(), selection: .constant(nil)) {
             TableColumn("#") { model in
                 Text("\(rank(of: model))")
-                    .foregroundStyle(rank(of: model) <= 3 ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(rank(of: model) <= 3 ? theme.accentColor : theme.secondaryText)
                     .fontWeight(.semibold)
             }
             .width(30)

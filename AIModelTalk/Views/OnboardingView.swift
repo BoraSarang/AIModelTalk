@@ -3,6 +3,7 @@ import SwiftUI
 /// 첫 실행 온보딩 — macOS 네이티브 웰컴 스타일 3슬라이드 (v2.0 T-83, 디자인 개편 v2.1 T-101)
 /// 앱아이콘 타일 + 워드마크 + 아이콘 피처 행 구성. 슬라이드 메타는 테스트 검증 대상.
 struct OnboardingView: View {
+    @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
     @State private var page = 0
 
@@ -85,7 +86,7 @@ struct OnboardingView: View {
             // 페이지 인디케이터 — macOS에 .page 스타일 미지원 → 수동 도트
             HStack(spacing: 8) {
                 ForEach(Self.slides.indices, id: \.self) { i in
-                    dsDot(i == page ? Color.accentColor : Color.secondary.opacity(0.3))
+                    dsDot(i == page ? theme.accentColor : theme.secondaryText.opacity(0.3))
                 }
             }
             .padding(.bottom, 14)
@@ -111,8 +112,8 @@ struct OnboardingView: View {
                     .buttonStyle(.borderedProminent)
                 }
             }
-            .padding(.horizontal, DS.windowInset)
-            .padding(.bottom, DS.windowInset)
+            .padding(.horizontal, theme.windowInset)
+            .padding(.bottom, theme.windowInset)
         }
         .frame(minWidth: 560, minHeight: 480)
         .onAppear {
@@ -131,8 +132,8 @@ struct OnboardingView: View {
 
             // 앱아이콘 타일 — 그라디언트 라운드 사각 + 흰색 심볼
             ZStack {
-                RoundedRectangle(cornerRadius: DS.radiusPanel)
-                    .fill(page == index ? AnyShapeStyle(tileGradient) : AnyShapeStyle(Color.secondary.opacity(0.15)))
+                RoundedRectangle(cornerRadius: theme.radiusPanel)
+                    .fill(page == index ? AnyShapeStyle(tileGradient) : AnyShapeStyle(theme.secondaryText.opacity(0.15)))
                 Image(systemName: meta.icon)
                     .font(.system(size: 38, weight: .medium))
                     .foregroundStyle(.white)
@@ -145,7 +146,7 @@ struct OnboardingView: View {
                     .font(.system(size: 26, weight: .bold))
                 Text(meta.subtitle)
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
             .multilineTextAlignment(.center)
 
@@ -167,16 +168,16 @@ struct OnboardingView: View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: feature.icon)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(theme.accentColor)
                 .frame(width: 34, height: 34)
-                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: DS.radiusControl))
+                .background(theme.primaryText.opacity(0.06), in: RoundedRectangle(cornerRadius: theme.radiusControl))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(feature.title)
                     .font(.subheadline.weight(.semibold))
                 Text(feature.detail)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
 

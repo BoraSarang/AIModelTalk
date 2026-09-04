@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ModelsSettingsView: View {
+    @Environment(\.theme) private var theme
     /// @ObservedObject를 의도적으로 쓰지 않는다 — 토글(enabledOverrides) 변화로 이 화면 전체가
     /// 재평가되는 것을 막는다. 각 행(ModelRow)이 자기 모델만 관찰한다. (v0.2.3)
     /// 모델 목록/카운트는 쿼리 시점에 catalog에서 직접 읽는다.
@@ -36,9 +37,9 @@ struct ModelsSettingsView: View {
 
     var body: some View {
 
-                VStack(spacing: DS.space4) {
+                VStack(spacing: theme.space4) {
                     // ── 상단 카드 (고정) ──
-                    VStack(spacing: DS.space4) {
+                    VStack(spacing: theme.space4) {
                         // 검색 필드
                         HStack {
                             SettingsSearchField(
@@ -88,7 +89,7 @@ struct ModelsSettingsView: View {
                             if let result = refreshResult {
                                 Text(result)
                                     .font(.caption)
-                                    .foregroundStyle(hasRefreshError ? Color.orange : Color.secondary)
+                                    .foregroundStyle(hasRefreshError ? Color.orange : theme.secondaryText)
                                     .lineLimit(1)
                             }
                             Button {
@@ -113,14 +114,14 @@ struct ModelsSettingsView: View {
                                 Spacer()
                                 Text("활성 \(vis) / 전체 \(tot)")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(theme.secondaryText)
                             }
                         }
                     }
-                    .padding(DS.cardInset)
-                    .dsCard()
+                    .padding(theme.cardInset)
+                    .background(theme.cardBackground).overlay(RoundedRectangle(cornerRadius: theme.cardCornerRadius).stroke(theme.cardBorder.opacity(theme.borderOpacity), lineWidth: theme.defaultBorderWidth)).clipShape(RoundedRectangle(cornerRadius: theme.cardCornerRadius, style: .continuous))
                     
-                    Spacer(minLength: DS.cardInset)
+                    Spacer(minLength: theme.cardInset)
                     
                     // ── 하단 카드 (스크롤, 가상화) ──
                     // 모델이 700+개여도 필요한 행만 렌더되도록 List로 전환 (v0.2.1 성능)
@@ -129,20 +130,20 @@ struct ModelsSettingsView: View {
                             VStack(spacing: 8) {
                                 Image(systemName: "cpu")
                                     .font(.title2)
-                                    .foregroundStyle(.tertiary)
+                                    .foregroundStyle(theme.tertiaryText)
                                 Text("공급자를 선택하거나 검색하세요")
                                     .font(.callout)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(theme.secondaryText)
                                 Text("총 \(allModelCount)개 모델 등록됨")
                                     .font(.caption)
-                                    .foregroundStyle(.tertiary)
+                                    .foregroundStyle(theme.tertiaryText)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
                             .listRowSeparator(.hidden)
                         } else if searchedModels.isEmpty {
                             Text("'\(searchText)'에 일치하는 모델이 없습니다")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.secondaryText)
                                 .frame(maxWidth: .infinity)
                                 .listRowSeparator(.hidden)
                         } else {
@@ -152,16 +153,16 @@ struct ModelsSettingsView: View {
                                     onDelete: { deleteModel(model) }
                                 )
                                 .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 0, leading: DS.space16, bottom: 0, trailing: DS.space16))
+                                .listRowInsets(EdgeInsets(top: 0, leading: theme.space16, bottom: 0, trailing: theme.space16))
                                 .listRowBackground(Color.clear)
                             }
                         }
                     }
                     .listStyle(.plain)
                     .frame(maxHeight: .infinity)
-                    .dsCard()
+                    .background(theme.cardBackground).overlay(RoundedRectangle(cornerRadius: theme.cardCornerRadius).stroke(theme.cardBorder.opacity(theme.borderOpacity), lineWidth: theme.defaultBorderWidth)).clipShape(RoundedRectangle(cornerRadius: theme.cardCornerRadius, style: .continuous))
                     
-                    Spacer(minLength: DS.cardInset)
+                    Spacer(minLength: theme.cardInset)
                 }
                 .sheet(isPresented: $showAddModel) {
                     AddModelSheet(
@@ -251,6 +252,7 @@ struct ModelsSettingsView: View {
 // MARK: - 모델 행
 
 private struct ModelRow: View {
+    @Environment(\.theme) private var theme
     /// 행마다 카탈로그를 직접 관찰해 토글이 이 행 하나만 재평가되게 분리 (v0.2.3)
     @ObservedObject private var catalog = ModelCatalog.shared
     let model: AIModel
@@ -261,7 +263,7 @@ private struct ModelRow: View {
             HStack(spacing: 8) {
                 Circle()
                     .fill(model.provider.accentSwiftUIColor)
-                    .frame(width: DS.dotStandard, height: DS.dotStandard)
+                    .frame(width: theme.dotStandard, height: theme.dotStandard)
 
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
@@ -270,11 +272,11 @@ private struct ModelRow: View {
                             .truncationMode(.middle)
                         Text(model.provider.rawValue)
                             .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(theme.tertiaryText)
                     }
                     Text(model.id)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -286,7 +288,7 @@ private struct ModelRow: View {
                 if model.contextLimit > 0 {
                     Text("\(model.contextLimit / 1000)K")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                 }
 
                 Toggle("", isOn: Binding(
@@ -300,7 +302,7 @@ private struct ModelRow: View {
 
                 Button { onDelete() } label: {
                     Image(systemName: "trash")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                 }
                 .buttonStyle(.plain)
                 .help("모델 삭제")
@@ -319,6 +321,7 @@ private struct AddModelSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var catalog = ModelCatalog.shared
+    @Environment(\.theme) private var theme
 
     @State private var selectedEntry: ProviderEntry?
     @State private var modelID = ""
@@ -335,7 +338,7 @@ private struct AddModelSheet: View {
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 12) {
                 GridRow {
                     Text("공급자")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                         .gridColumnAlignment(.trailing)
                     Picker("", selection: $selectedEntry) {
                         Text("공급자 선택…").tag(ProviderEntry?.none)
@@ -350,7 +353,7 @@ private struct AddModelSheet: View {
                 if selectedEntry?.provider == .custom {
                     GridRow {
                         Text("엔드포인트")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.secondaryText)
                             .gridColumnAlignment(.trailing)
                         Picker("", selection: $selectedEndpointID) {
                             Text("엔드포인트 선택…").tag(UUID?.none)
@@ -365,21 +368,21 @@ private struct AddModelSheet: View {
 
                 GridRow {
                     Text("모델 ID")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                         .gridColumnAlignment(.trailing)
                     TextField("예: gpt-4o", text: $modelID)
                         .textFieldStyle(.roundedBorder)
                 }
                 GridRow {
                     Text("표시 이름")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                         .gridColumnAlignment(.trailing)
                     TextField("예: GPT-4o", text: $displayName)
                         .textFieldStyle(.roundedBorder)
                 }
                 GridRow {
                     Text("컨텍스트 한도")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
                         .gridColumnAlignment(.trailing)
                     TextField("예: 128000", text: $contextLimit)
                         .textFieldStyle(.roundedBorder)
