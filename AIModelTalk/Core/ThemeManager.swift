@@ -157,6 +157,9 @@ public final class ThemeManager {
 
     // MARK: Published State
 
+    /// 액티브 동안 didSet 발화를 잠금 (init)·저장소 복원 시 nonisolated Observation 경로 크래시 방지 (v0.3.1)
+    private var isRestoringState = false
+
     /// 현재 활성 테마 (전역, Environment 주입용)
     var currentTheme: ThemeProtocol = LightTheme()
 
@@ -165,12 +168,18 @@ public final class ThemeManager {
 
     /// 시스템 외형 추종 모드
     var appearanceMode: AppearanceMode = .system {
-        didSet { applyResolvedTheme() }
+        didSet {
+            guard !isRestoringState else { return }
+            applyResolvedTheme()
+        }
     }
 
     /// 시스템 액센트 색상 따름
     var followsSystemAccent: Bool = true {
-        didSet { applyResolvedTheme() }
+        didSet {
+            guard !isRestoringState else { return }
+            applyResolvedTheme()
+        }
     }
 
     /// 설치된 커스텀 테마 목록
@@ -180,7 +189,10 @@ public final class ThemeManager {
 
     /// 현재 적용된 커스텀 테마 (nil = 내장 라이트/다크)
     var activeCustomTheme: CustomTheme? {
-        didSet { applyResolvedTheme() }
+        didSet {
+            guard !isRestoringState else { return }
+            applyResolvedTheme()
+        }
     }
 
     // MARK: Private
@@ -190,8 +202,10 @@ public final class ThemeManager {
     private var accentObserver: NSObjectProtocol?
 
     private init() {
+        isRestoringState = true
         loadPreferences()
         observeSystemChanges()
+        isRestoringState = false
         applyResolvedTheme()
     }
 
@@ -347,13 +361,18 @@ public final class ThemeManager {
         if let custom = activeCustomTheme {
             resolvedTheme = CustomizableTheme(config: custom)
         } else {
-            let isDark = effectiveMode == .dark || (effectiveMode == .system && NSApp.effectiveAppearance.isDarkMode)
+            // NSApp이 아직 nil일 수 있는 시작 초기화 단계에서도 안전 — 시스템 다크 미확인이면 라이트 기본 (v0.3.1)
+            let isDark = effectiveMode == .dark
+                || (effectiveMode == .system && (NSApp?.effectiveAppearance.isDarkMode ?? false))
             resolvedTheme = isDark ? DarkTheme() : LightTheme()
         }
 
         if animated {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                currentTheme = resolvedTheme
+            // didSet/loadPreferences 경로는 nonisolated 컨텍스트일 수 있음 — MainActor 격리를 명시 보장 (v0.3.1 크래시 수정)
+            MainActor.assumeIsolated {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    currentTheme = resolvedTheme
+                }
             }
         } else {
             currentTheme = resolvedTheme

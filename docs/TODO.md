@@ -5,22 +5,32 @@ v0.2.6+ "AI 채팅 기능 전면 실현". 상세: `docs/plans/PLAN_v0.2.6_macos.
 
 ## 진행 중
 
-- [ ] 축1a: ThemeManager 복구 + 앱 루트 테마 주입 + 설정 테마 선택 UI
-- [ ] 축1b: 16개 뷰 테마/글라스 적용 + DS.* 제거
-- [ ] 축2: AIModel 가격 필드 + ModelCatalog 가격 테이블 + 비용 계산($0.00 제거) + 비용 UI
-- [ ] 축3a: workspaceFolder 지정(NSOpenPanel) + 시스템 프롬프트 주입
-- [ ] 축3b: 내장 filesystem 도구(list_dir/read_file/write_file/edit_file) + 샌드박스 + 권한 게이트
-- [ ] 축4a: 용도 모드 분리(채팅/이미지/코딩)
-- [ ] 축4b: DALL-E/이미지 생성 파이프라인(ImageClient 신규)
+(없음 — 축1~4 완료)
 
 ## 백로그
 
 - [ ] T-320 코드 블록 Splash SPM 연동 (선택 — regex 폴백 사용 중)
 - [ ] T-* 크레딧 충전/잔액 백엔드 연동 (백엔드 준비 시)
 
-## 완료 (v0.2.6+)
+## 완료 (v0.3.1)
 
-(진행 예정)
+- [x] 축4a: 용도 모드 분리(채팅/이미지/코딩) — ChatSession.mode + 입력바 세그먼트 (2026-09-05, 3d539a0)
+- [x] 축4b: DALL-E/이미지 생성 — ImageClient + imageModels(gpt-image-1/dall-e-3) + sendImage + 어시스턴트 말풍선 표시·저장 (2026-09-05, 3d539a0)
+- [x] 기동 크래시 수정 — ThemeManager 시작 시 NSApp nil 강제언랩 → optional 안전화 (2026-09-05)
+
+## 완료 (v0.3.0)
+
+- [x] 축3a: workspaceFolder 지정(NSOpenPanel) + 시스템 프롬프트 주입 (2026-09-05, 3b601f8)
+- [x] 축3b: FileSystemTools(list_dir/read_file/write_file/edit_file) + 경로 샌드박스 + 권한 게이트 (2026-09-05, 3b601f8)
+
+## 완료 (v0.2.7)
+
+- [x] 축2: AIModel 가격 필드 + ModelCatalog 유료 모델 가격 + SessionCost 계산($0.00 제거) + CostSettingsView/비용 탭 (2026-09-05, e4d532f)
+
+## 완료 (v0.2.6)
+
+- [x] 축1a: ThemeManager + 앱 루트 테마 주입 + 설정 테마 선택 UI (2026-09-05, 711d021)
+- [x] 축1b: 16개 뷰 테마/글라스 적용 + DS.* 전면 제거 0건 (2026-09-05, 711d021)
 
 ## 완료 (v0.2.5까지)
 

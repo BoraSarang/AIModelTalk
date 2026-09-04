@@ -2,6 +2,62 @@
 
 이 프로젝트는 **v0.1.0** 초기 릴리스이며, 여기서부터 신규 출발합니다. (이전 이력 없음)
 
+## [0.3.1] — 2026-09-05 (축4 용도 모드 분리 + 이미지 생성) · `3d539a0`
+
+> AI 채팅 기능 전면 실현 마지막 축 — 채팅/이미지/코딩 용도 모드 분리와 DALL-E·이미지 생성 파이프라인 추가
+
+### 축4a — 용도 모드 분리
+- **ChatMode enum** (chat/image/coding + label·icon) + `ChatSession.mode` (SwiftData 컬럼)
+- **ChatInputBarView 모드 세그먼트**: 입력바 상단 채팅/이미지/코딩 Picker + 이미지·코딩 안내 문구
+- **`setMode(_:for:)`** — 세션 모드 변경 + `[FEATURE] 세션 모드 변경` 로그
+
+### 축4b — 이미지 생성
+- **ImageClient.swift 신규**: OpenAI 호환 `/images/generations` (apiKey/baseURL는 Provider 설정 따름, 커스텀은 customBaseURL)
+- **ModelCatalog.imageModels** = [gpt-image-1, dall-e-3] (isFree=false)
+- **`sendImage(_:to:model:size:)`** — "이미지 생성 중…" 스트리밍 → 생성 이미지 assistant 메시지 attachment 부착
+- **BubbleViews**: 어시스턴트 말풍선에 생성 이미지 표시 + NSSavePanel 저장 버튼
+
+### 버그 수정
+- **기동 크래시 수정**: ThemeManager 가 시작 초기화 단계에서 `NSApp`(IUO) nil 접근 → `NSApp?.effectiveAppearance.isDarkMode ?? false` 옵셔널 안전화. 미수정 시 앱 최초 실행 크래시(SIGTRAP)로 창이 뜨지 않았음.
+
+---
+
+## [0.3.0] — 2026-09-05 (축3 워크스페이스 파일 도구) · `3b601f8`
+
+> 모델이 로컬 폴더(워크스페이스) 안에서 파일을 읽고 쓰는 내장 도구 추가
+
+- **AppSettings.workspaceFolder**: UserDefaults 저장(단일 폴더), GeneralSettingsView에 NSOpenPanel 폴더 선택 UI(변경/해제)
+- **FileSystemTools.swift 신규**: `@MainActor` — list_dir/read_file/write_file/edit_file + 경로 샌드박스 `resolve()` + `promptOverview()` 트리 요약
+- **ToolLoopService**: 파일 도구는 미지정 시 `builtinToolNames`에서 제외(비활성), 지정 시 switch 분기 + `toolRecord`
+- **ChatViewModel.builtinToolDefinitions**: 파일 도구 JSON 스키마 추가, `buildSystemPrompt()`에 워크스페이스 개요 주입
+
+---
+
+## [0.2.7] — 2026-09-05 (축2 크레딧·비용 추적) · `e4d532f`
+
+> 모델 호출 비용을 추적하고 표시 — 순수 비용(충전/잔액 없음)
+
+- **AIModel.inputPricePerM/outputPricePerM** + `isPaid` 계산 프로퍼티
+- **ModelCatalog 모델 가격**: GPT-4o mini $0.15/$0.60, GPT-4o $2.50/$10.00, Haiku 4.5 $1.00/$5.00, Sonnet 4.5 $3.00/$15.00, DeepSeek V4 Flash $0.20/$0.60, V4 Pro $0.50/$1.50, Chat $0.27/$1.10, Reasoner $0.55/$2.19
+- **ChatMessage.costUSD(@MainActor)** + **SessionCost** (누적/계산/유료 메시지 수/formatUSD)
+- **BubbleViews**: $0.00 하드코딩 제거 → 실제 비용 표시
+- **AddModelSheet**: 입력/출력 가격 입력 + 저장, ModelRow 가격 배지
+- **CostSettingsView 신규** + SettingsTab `.cost`(비용/토큰, dollarsign.circle): 누적 비용·현재 세션·유료 메시지 수·월 예산 상한·모델 가격 테이블
+
+---
+
+## [0.2.6] — 2026-09-05 (축1 테마 시스템 전면 적용) · `711d021`
+
+> 테마 인프라(0.2.5)를 채팅·설정·도구 뷰 전면에 적용
+
+- **앱 루트 테마 주입**: `themeEnvironment(_:)` View 확장 — 모든 Scene(메인/벤치마크/브레인스토밍/비교/스플릿/평가/디버그/설정)에 `@Environment(\.theme)`
+- **축1a**: GeneralSettingsView에 모드(시스템/라이트/다크)·액센트(시스템 따름 6색)·미리보기 카드, `syncAppearanceMode` 브리지
+- **축1b**: 채팅(BubbleViews·InputBar·캔버스)·설정(Providers/Models/MCP/Skills/Memory/Hotkey/Cost)·도구(CompareOverlay, GlobalSearch 등) 전면 테마 적용
+- **DS.\* 전면 제거 0건** (DesignSystem.swift의 DS만 `dsBadge` 호환으로 유지)
+- 25 files, +459/−221
+
+---
+
 ## [0.2.5] — 2026-09-05 (Osaurus 스타일 테마 인프라 & 컴포넌트 라이브러리)
 
 > AIModelTalk에 Osaurus급 네이티브 macOS 디자인 시스템 적용 — 테마 인프라 구축 + 공통 컴포넌트 라이브러리 + 뷰 마이그레이션
