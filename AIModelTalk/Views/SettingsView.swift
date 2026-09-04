@@ -8,6 +8,7 @@ enum SettingsTab: String, CaseIterable {
     case skills = "스킬"
     case memory = "메모리"
     case hotkey = "단축키"
+    case cost = "비용/토큰"
 
     var icon: String {
         switch self {
@@ -18,6 +19,7 @@ enum SettingsTab: String, CaseIterable {
         case .skills: return "sparkles"
         case .memory: return "brain"
         case .hotkey: return "keyboard"
+        case .cost: return "dollarsign.circle"
         }
     }
 }
@@ -35,6 +37,7 @@ struct SettingsView: View {
             tab(.skills) { SkillSettingsView() }
             tab(.memory) { MemorySettingsView() }
             tab(.hotkey) { HotkeySettingsView() }
+            tab(.cost) { CostSettingsView() }
         }
         .frame(minWidth: 700, minHeight: 520)
         .background(theme.primaryBackground)

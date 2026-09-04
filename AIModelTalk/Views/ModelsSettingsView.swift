@@ -258,6 +258,16 @@ private struct ModelRow: View {
     let model: AIModel
     let onDelete: () -> Void
 
+    /// 백만 토큰당 입/출력 USD 축약 표시 (v0.2.7)
+    private var priceText: String? {
+        let i = model.inputPricePerM ?? 0
+        let o = model.outputPricePerM ?? 0
+        func fmt(_ v: Double) -> String {
+            v >= 1 ? String(format: "$%.2f", v) : String(format: "$%.3f", v)
+        }
+        return "\(fmt(i))/\(fmt(o))"
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             HStack(spacing: 8) {
@@ -285,7 +295,13 @@ private struct ModelRow: View {
             Spacer()
 
             HStack(spacing: 14) {
-                if model.contextLimit > 0 {
+                if model.isPaid, let cost = priceText {
+                    Text(cost)
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(theme.accentColor)
+                        .help("백만 토큰당 입/출력 USD 가격 (설정 → 비용/토큰)")
+                } else if model.contextLimit > 0 {
                     Text("\(model.contextLimit / 1000)K")
                         .font(.caption)
                         .foregroundStyle(theme.secondaryText)
@@ -327,6 +343,8 @@ private struct AddModelSheet: View {
     @State private var modelID = ""
     @State private var displayName = ""
     @State private var contextLimit = "128000"
+    @State private var inputPrice = ""
+    @State private var outputPrice = ""
     @State private var customEndpoints: [CustomEndpoint] = []
     @State private var selectedEndpointID: UUID?
 
@@ -387,6 +405,20 @@ private struct AddModelSheet: View {
                     TextField("예: 128000", text: $contextLimit)
                         .textFieldStyle(.roundedBorder)
                 }
+                GridRow {
+                    Text("입력 가격")
+                        .foregroundStyle(theme.secondaryText)
+                        .gridColumnAlignment(.trailing)
+                    TextField("백만 토큰당 USD, 예: 2.50 (비우면 무료/미등록)", text: $inputPrice)
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("출력 가격")
+                        .foregroundStyle(theme.secondaryText)
+                        .gridColumnAlignment(.trailing)
+                    TextField("백만 토큰당 USD, 예: 10.00", text: $outputPrice)
+                        .textFieldStyle(.roundedBorder)
+                }
             }
             .frame(minWidth: 420)
 
@@ -427,12 +459,23 @@ private struct AddModelSheet: View {
 
     private var canAdd: Bool {
         guard !modelID.isEmpty, !displayName.isEmpty, Int(contextLimit) != nil else { return false }
+        if !inputPrice.isEmpty, Double(inputPrice) ?? -1 < 0 { return false }
+        if !outputPrice.isEmpty, Double(outputPrice) ?? -1 < 0 { return false }
         if selectedEntry?.provider == .custom { return selectedEndpointID != nil }
         return true
     }
 
+    private func parsedPrices() -> (input: Double?, output: Double?) {
+        let i = inputPrice.trimmingCharacters(in: .whitespaces)
+        let o = outputPrice.trimmingCharacters(in: .whitespaces)
+        return (i.isEmpty ? nil : Double(i), o.isEmpty ? nil : Double(o))
+    }
+
     private func addModel() {
         guard let limit = Int(contextLimit), let entry = selectedEntry else { return }
+        let prices = parsedPrices()
+        // 가격이 둘 다 비어있으면 무료, 하나라도 있으면 유료 취급 (isFree: false)
+        let isFree = prices.input == nil && prices.output == nil
         let model: AIModel
         if entry.provider == .custom, let endpointID = selectedEndpointID,
            let endpoint = customEndpoints.first(where: { $0.id == endpointID }) {
@@ -440,14 +483,20 @@ private struct AddModelSheet: View {
                 id: CustomEndpoint.compositeID(endpointID: endpoint.id, modelID: modelID),
                 provider: .custom,
                 displayName: "\(displayName) (\(endpoint.name))",
-                contextLimit: limit
+                isFree: isFree,
+                contextLimit: limit,
+                inputPricePerM: prices.input,
+                outputPricePerM: prices.output
             )
         } else {
             model = AIModel(
                 id: modelID,
                 provider: entry.provider,
                 displayName: displayName,
-                contextLimit: limit
+                isFree: isFree,
+                contextLimit: limit,
+                inputPricePerM: prices.input,
+                outputPricePerM: prices.output
             )
         }
         catalog.addModel(model)

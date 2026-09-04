@@ -116,19 +116,20 @@ final class ModelCatalog: ObservableObject {
         AIModel(id: "gemini-3.6-flash", provider: .gemini, displayName: "Gemini 3.6 Flash", contextLimit: 1_048_576),
         AIModel(id: "gemini-3.5-flash-lite", provider: .gemini, displayName: "Gemini 3.5 Flash-Lite", contextLimit: 1_048_576),
         // OpenAI / Anthropic (유료 — API 키 보유자용 대표 모델, v2.1 T-93 무료전용 정책 폐기)
-        AIModel(id: "gpt-4o-mini", provider: .openAI, displayName: "GPT-4o mini", isFree: false, contextLimit: 128_000),
-        AIModel(id: "gpt-4o", provider: .openAI, displayName: "GPT-4o", isFree: false, contextLimit: 128_000),
-        AIModel(id: "claude-haiku-4-5", provider: .anthropic, displayName: "Claude Haiku 4.5", isFree: false, contextLimit: 200_000),
-        AIModel(id: "claude-sonnet-4-5", provider: .anthropic, displayName: "Claude Sonnet 4.5", isFree: false, contextLimit: 200_000),
+        // 가격 = 백만 토큰당 USD (v0.2.7 축2)
+        AIModel(id: "gpt-4o-mini", provider: .openAI, displayName: "GPT-4o mini", isFree: false, contextLimit: 128_000, inputPricePerM: 0.15, outputPricePerM: 0.60),
+        AIModel(id: "gpt-4o", provider: .openAI, displayName: "GPT-4o", isFree: false, contextLimit: 128_000, inputPricePerM: 2.50, outputPricePerM: 10.00),
+        AIModel(id: "claude-haiku-4-5", provider: .anthropic, displayName: "Claude Haiku 4.5", isFree: false, contextLimit: 200_000, inputPricePerM: 1.00, outputPricePerM: 5.00),
+        AIModel(id: "claude-sonnet-4-5", provider: .anthropic, displayName: "Claude Sonnet 4.5", isFree: false, contextLimit: 200_000, inputPricePerM: 3.00, outputPricePerM: 15.00),
         // OpenCode Zen (게이트웨이, OpenAI 호환 chat/completions — 무료 먼저, 유료는 isFree: false)
         AIModel(id: "opencode/big-pickle", provider: .opencode, displayName: "Big Pickle (무료)", contextLimit: 128_000),
         AIModel(id: "opencode/nemotron-3-ultra-free", provider: .opencode, displayName: "Nemotron 3 Ultra (무료)", contextLimit: 128_000),
         AIModel(id: "opencode/mimo-v2.5-free", provider: .opencode, displayName: "MiMo V2.5 (무료)", contextLimit: 128_000),
-        AIModel(id: "opencode/deepseek-v4-flash", provider: .opencode, displayName: "DeepSeek V4 Flash", isFree: false, contextLimit: 128_000),
-        AIModel(id: "opencode/deepseek-v4-pro", provider: .opencode, displayName: "DeepSeek V4 Pro", isFree: false, contextLimit: 128_000),
+        AIModel(id: "opencode/deepseek-v4-flash", provider: .opencode, displayName: "DeepSeek V4 Flash", isFree: false, contextLimit: 128_000, inputPricePerM: 0.20, outputPricePerM: 0.60),
+        AIModel(id: "opencode/deepseek-v4-pro", provider: .opencode, displayName: "DeepSeek V4 Pro", isFree: false, contextLimit: 128_000, inputPricePerM: 0.50, outputPricePerM: 1.50),
         // DeepSeek (공식 API — 유료)
-        AIModel(id: "deepseek-chat", provider: .deepseek, displayName: "DeepSeek Chat", isFree: false, contextLimit: 128_000),
-        AIModel(id: "deepseek-reasoner", provider: .deepseek, displayName: "DeepSeek Reasoner", isFree: false, contextLimit: 64_000),
+        AIModel(id: "deepseek-chat", provider: .deepseek, displayName: "DeepSeek Chat", isFree: false, contextLimit: 128_000, inputPricePerM: 0.27, outputPricePerM: 1.10),
+        AIModel(id: "deepseek-reasoner", provider: .deepseek, displayName: "DeepSeek Reasoner", isFree: false, contextLimit: 64_000, inputPricePerM: 0.55, outputPricePerM: 2.19),
         // Ollama (로컬 무료 모델 — 대표 모델만 정적 등록, 실제 목록은 /api/tags에서 동기화)
         AIModel(id: "llama3.2:latest", provider: .ollama, displayName: "Llama 3.2", contextLimit: 128_000),
         AIModel(id: "gemma2:2b", provider: .ollama, displayName: "Gemma 2 2B", contextLimit: 8_192),
