@@ -31,19 +31,11 @@ struct MCPSettingsView: View {
 
     var body: some View {
         Form {
-            Section("MCP 도구 — 베타 (v2.4)") {
-                Toggle("도구 사용 활성화", isOn: $settings.mcpToolsEnabled)
-                Text("연결된 MCP(stdio/원격) 서버의 도구를 모델이 호출합니다. OpenAI 호환·Anthropic 모델만 지원하며, 기본 정책은 실행 전 매번 확인입니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            // MARK: - 원격 MCP 공급자 섹션 (v2.5)
-            Section("원격 MCP 공급자 (v2.5)") {
+            // MARK: - 원격 MCP 공급자 섹션 (ProviderCard 그리드)
+            Section {
                 HStack {
-                    Text("공급자 목록")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Label("원격 MCP 공급자", systemImage: "externaldrive")
+                        .font(.headline)
                     Spacer()
                     if isProbing {
                         ProgressView()
@@ -57,15 +49,57 @@ struct MCPSettingsView: View {
                         Label("공급자 연결…", systemImage: "plus")
                     }
                 }
+
                 if remoteStore.providers.isEmpty {
-                    Text("연결된 원격 공급자가 없습니다. '공급자 연결…'로 Linear, Notion, GitHub 등 잘 알려진 서비스를 원탭 연결하세요.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    EmptyStateView.noProviders(onConnect: { showProviderCatalog = true })
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
                 } else {
-                    ForEach(remoteStore.providers) { provider in
-                        remoteProviderRow(provider)
+                    // 헬스 스냅샷 카드
+                    healthSnapshotCard
+
+                    // ProviderCard 그리드 (2열)
+                    LazyVGrid(columns: [
+                        GridItem(.flexible(), spacing: 12),
+                        GridItem(.flexible(), spacing: 12)
+                    ], spacing: 12) {
+                        ForEach(Array(remoteStore.providers.enumerated()), id: \.element.id) { index, provider in
+                            ProviderCard(
+                                report: reportForProvider(provider),
+                                animationIndex: index,
+                                isTesting: false,
+                                onEdit: { editingRemoteProvider = provider },
+                                onDelete: {
+                                    remoteStore.remove(provider.id)
+                                    remoteProbes[provider.id] = nil
+                                    manager.disconnect(provider.id)
+                                },
+                                onConnect: { Task { await probeRemote(provider) } },
+                                onDisconnect: { manager.disconnect(provider.id) },
+                                onTest: { Task { await probeRemote(provider) } },
+                                onCopyDiagnostics: { copyDiagnostics(for: provider) },
+                                onToggleEnabled: { newValue in
+                                    var updated = provider
+                                    updated.isEnabled = newValue
+                                    remoteStore.upsert(updated)
+                                    if !newValue { manager.disconnect(provider.id) }
+                                },
+                                onSignIn: { editingRemoteProvider = provider },
+                                onSaveBearerToken: { token in
+                                    remoteStore.setAccessToken(token, for: provider.id)
+                                }
+                            )
+                        }
                     }
                 }
+            }
+
+            // MARK: - MCP 도구 섹션
+            Section("MCP 도구 — 베타 (v2.4)") {
+                Toggle("도구 사용 활성화", isOn: $settings.mcpToolsEnabled)
+                Text("연결된 MCP(stdio/원격) 서버의 도구를 모델이 호출합니다. OpenAI 호환·Anthropic 모델만 지원하며, 기본 정책은 실행 전 매번 확인입니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             // MARK: - 로컬 stdio 서버 섹션 (기존)
@@ -100,7 +134,6 @@ struct MCPSettingsView: View {
         .sheet(isPresented: $showProviderCatalog) {
             MCPProviderCatalogView { template in
                 showProviderCatalog = false
-                // 연결 화면 표시
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     editingRemoteProvider = MCPProviderConfiguration.fromTemplate(template)
                 }
@@ -109,7 +142,6 @@ struct MCPSettingsView: View {
         .sheet(item: $editingRemoteProvider) { provider in
             MCPProviderConnectView(template: provider.template ?? MCPProviderTemplate.catalog.first!)
                 .onDisappear {
-                    // 연결 완료 후 상태 새로고침
                     if provider.isConnected {
                         Task { await probeRemote(provider) }
                     }
@@ -117,65 +149,76 @@ struct MCPSettingsView: View {
         }
     }
 
-    // MARK: - 원격 공급자 행
+    // MARK: - 헬스 스냅샷 카드
 
-    private func remoteProviderRow(_ provider: MCPProviderConfiguration) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: provider.template?.icon ?? "server.rack")
-                .font(.system(size: 14))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 24, height: 24)
-                .background(Color.accentColor.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 5))
+    private var healthSnapshotCard: some View {
+        let totalProviders = remoteStore.providers.count
+        let enabledProviders = remoteStore.providers.filter(\.isEnabled).count
+        let connectedCount = remoteStore.providers.filter { remoteProbes[$0.id]?.ok == true }.count
+        let totalTools = remoteProbes.values.filter(\.ok).reduce(0) { $0 + $1.toolCount }
 
+        return HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(provider.displayName)
-                    .font(.system(size: 13, weight: .medium))
-                HStack(spacing: 4) {
-                    Text(provider.url)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    AuthModeBadge(mode: provider.authMode)
-                        .font(.caption2)
-                }
+                Text("공급자 상태")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("\(connectedCount)/\(enabledProviders) 연결됨")
+                    .font(.system(size: 13, weight: .semibold))
             }
-
+            Divider()
+            VStack(alignment: .leading, spacing: 2) {
+                Text("활성 도구")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("\(totalTools)개")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 2) {
+                Text("전체 공급자")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("\(totalProviders)개")
+                    .font(.system(size: 13, weight: .semibold))
+            }
             Spacer()
-
-            if let probe = remoteProbes[provider.id] {
-                Text(probe.ok ? "도구 \(probe.toolCount)개" : probe.message)
-                    .font(.caption2)
-                    .foregroundStyle(probe.ok ? Color.green : Color.orange)
-            }
-
-            Toggle("", isOn: Binding(
-                get: { provider.isEnabled },
-                set: { newValue in
-                    var updated = provider
-                    updated.isEnabled = newValue
-                    remoteStore.upsert(updated)
-                    if !newValue {
-                        manager.disconnect(provider.id)
-                    }
-                }))
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .labelsHidden()
-
-            Button("편집") { editingRemoteProvider = provider }
-                .controlSize(.small)
-            Button(role: .destructive) {
-                remoteStore.remove(provider.id)
-                remoteProbes[provider.id] = nil
-                manager.disconnect(provider.id)
-            } label: {
-                Image(systemName: "trash")
-            }
-            .controlSize(.small)
         }
-        .padding(.vertical, 4)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        )
+    }
+
+    // MARK: - Helper
+
+    private func reportForProvider(_ provider: MCPProviderConfiguration) -> MCPServerHubProviderReport {
+        let probe = remoteProbes[provider.id]
+        let diagnostics: MCPProviderDiagnostics? = probe.map { probe in
+            MCPProviderDiagnostics(
+                status: probe.ok ? .connected : .error,
+                toolCount: probe.toolCount,
+                message: probe.message
+            )
+        }
+        return MCPServerHubProviderReport(id: provider.id, provider: provider, diagnostics: diagnostics)
+    }
+
+    private func copyDiagnostics(for provider: MCPProviderConfiguration) {
+        let probe = remoteProbes[provider.id]
+        let text = """
+        공급자: \(provider.displayName)
+        URL: \(provider.url)
+        인증: \(provider.authMode.displayName)
+        상태: \(probe.map { $0.ok ? "연결됨" : "오류: \($0.message)" } ?? "미확인")
+        도구 수: \(probe?.toolCount ?? 0)
+        """
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     // MARK: - 기존 stdio 서버 행 (기존 코드 유지)
@@ -480,7 +523,7 @@ private struct MCPServerEditSheet: View {
 
 // MARK: - 공유 뱃지 뷰 (MCPSettingsView, MCPProviderCatalogView에서 사용)
 
-private struct AuthModeBadge: View {
+private struct SettingsAuthModeBadge: View {
     let mode: MCPAuthMode
 
     var body: some View {

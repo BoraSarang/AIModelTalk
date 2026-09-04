@@ -2,6 +2,45 @@
 
 이 프로젝트는 **v0.1.0** 초기 릴리스이며, 여기서부터 신규 출발합니다. (이전 이력 없음)
 
+## [0.2.5] — 2026-09-05 (Osaurus 스타일 테마 인프라 & 컴포넌트 라이브러리)
+
+> AIModelTalk에 Osaurus급 네이티브 macOS 디자인 시스템 적용 — 테마 인프라 구축 + 공통 컴포넌트 라이브러리 + 뷰 마이그레이션
+
+### 테마 인프라 (Phase 1)
+- **ThemeProtocol**: 50+ 시맨틱 토큰 (색상/글라스/그림자/타이포그래피/애니메이션/코너/말풍선)
+- **LightTheme/DarkTheme**: WCAG AA 준수 대비도 (라이트 17:1, 다크 17:1)
+- **ThemeBox**: `@dynamicMemberLookup` 래퍼 — SwiftUI `@Environment(\.theme)` 프로토콜 직접 지원
+- **ThemeManager**: `@Observable` 싱글톤, 시스템 외형/액센트 추적 + `chatTheme` 세션별 오버라이드
+- **ThemeConfigurationStore**: UserDefaults 기반 테마 설정 저장
+- **DesignSystem 호환 레이어**: 기존 `DS.` 코드 무수정 유지
+
+### 공통 컴포넌트 22개 (Phase 2)
+- **카드**: MinimalCard, SimpleCard, ProviderCard(그리드), ProviderRowCard(리스트)
+- **버튼**: GradientButton (Primary/Secondary/Destructive + 로딩)
+- **시트/다이얼로그**: FittedSheetFrame, ThemedAlertDialog
+- **배경**: ThemedBackgroundLayer, GlassBackground, GlassListRow
+- **검색/탭**: SearchField, AnimatedTabSelector
+- **섹션/뱃지**: SectionHeader, AuthModeBadge, CategoryBadge, StatusBadge
+- **아바타/배지**: AvatarView, AgentBadge, InlineModelBadge
+- **코드/스트리밍**: CodeBlockView, InlineCodeView, StreamingDots
+- **입력**: FloatingInputCard, ChatInputCard, QuickChatInputCard
+- **빈 상태/토스트**: EmptyStateView, SettingsEmptyState, ToastManager, ToastView, ToastContainer
+- **캐릭터**: CharacterIllustrations (SF Symbol 폴백)
+
+### 뷰 마이그레이션 (Phase 3)
+- **SettingsView**: `.formStyle(.grouped)` + `AnimatedTabSelector` + `minHeight: 520` + theme environment
+- **MCPSettingsView**: ProviderCard 2열 그리드 + 헬스 스냅샷 카드 (기존 목록 → 카드형)
+- **MCPProviderConnectView**: 테마 컴포넌트 적용 + 단계 표시기(3점) + GradientButton
+- **ChatSession.themeID**: `String?` 세션별 테마 필드 + SwiftData 엔티티 컬럼 + saveSession 동기화
+- **CharacterIllustrations**: SF Symbol 폴백 (Assets 미로드 시 `face.smiling` 등 사용)
+
+### 기술 결정
+- **ThemeBox 사용 이유**: SwiftUI `@Environment(\.theme)`이 프로토콜 타입 직접 미지원 → `@dynamicMemberLookup` 래퍼로 속성 forwarding
+- **Splash SPM 제외**: xcodegen 패키지 의존성 추가 실패 → regex 기반 `CodeBlockView`로 대체 (T-320 백לוג 유지)
+- **캐릭터 에셋**: AI 이미지 생성 플레이스홀더 → SF Symbol 폴백 (추후 PDF 벡터 교체 가능)
+
+---
+
 ## [0.2.3] — 2026-09-04 (병렬 비교 UX 개선 — 선택·마크다운·창 크기) · `690365d`
 
 > 비교 팝오버 선택/갱신 문제와 결과 뷰어(Diff·합성·프롬프트)의 마크다운 렌더링을 개선.

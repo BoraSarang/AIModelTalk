@@ -15,10 +15,11 @@ import SwiftData
     var isIncognito: Bool = false
     var archivedAt: Date?
     var deletedAt: Date?
+    var themeID: String?
     @Relationship(deleteRule: .cascade, inverse: \ChatMessageEntity.session)
     var messages: [ChatMessageEntity]
 
-    init(id: UUID = UUID(), title: String, systemPrompt: String, createdAt: Date, updatedAt: Date, currentModelID: String? = nil, currentProviderRaw: String? = nil, selectedSkillsJSON: String? = nil, parentSessionID: UUID? = nil, forkedFromMessageID: UUID? = nil, isIncognito: Bool = false, archivedAt: Date? = nil, deletedAt: Date? = nil, messages: [ChatMessageEntity] = []) {
+    init(id: UUID = UUID(), title: String, systemPrompt: String, createdAt: Date, updatedAt: Date, currentModelID: String? = nil, currentProviderRaw: String? = nil, selectedSkillsJSON: String? = nil, parentSessionID: UUID? = nil, forkedFromMessageID: UUID? = nil, isIncognito: Bool = false, archivedAt: Date? = nil, deletedAt: Date? = nil, themeID: String? = nil, messages: [ChatMessageEntity] = []) {
         self.id = id
         self.title = title
         self.systemPrompt = systemPrompt
@@ -32,6 +33,7 @@ import SwiftData
         self.isIncognito = isIncognito
         self.archivedAt = archivedAt
         self.deletedAt = deletedAt
+        self.themeID = themeID
         self.messages = messages
     }
 
@@ -55,6 +57,7 @@ import SwiftData
             isIncognito: session.isIncognito,
             archivedAt: session.archivedAt,
             deletedAt: session.deletedAt,
+            themeID: session.themeID,
             messages: messageEntities
         )
         for msg in messageEntities {
@@ -90,7 +93,8 @@ import SwiftData
             forkedFromMessageID: forkedFromMessageID,
             isIncognito: isIncognito,
             archivedAt: archivedAt,
-            deletedAt: deletedAt
+            deletedAt: deletedAt,
+            themeID: themeID
         )
     }
 }

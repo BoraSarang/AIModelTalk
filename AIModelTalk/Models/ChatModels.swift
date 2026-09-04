@@ -113,8 +113,10 @@ struct ChatSession: Identifiable, Codable {
     var archivedAt: Date?
     /// 휴지통 이동 시각 — nil이면 활성/보관, 값 있으면 휴지통
     var deletedAt: Date?
+    /// 세션별 테마 ID — nil이면 글로벌 테마 사용
+    var themeID: String? = nil
 
-    init(id: UUID = UUID(), title: String = "새 대화", systemPrompt: String = "", messages: [ChatMessage] = [], currentModel: AIModel? = nil, selectedSkills: [SkillInfo] = [], createdAt: Date = Date(), updatedAt: Date = Date(), parentSessionID: UUID? = nil, forkedFromMessageID: UUID? = nil, isIncognito: Bool = false, archivedAt: Date? = nil, deletedAt: Date? = nil) {
+    init(id: UUID = UUID(), title: String = "새 대화", systemPrompt: String = "", messages: [ChatMessage] = [], currentModel: AIModel? = nil, selectedSkills: [SkillInfo] = [], createdAt: Date = Date(), updatedAt: Date = Date(), parentSessionID: UUID? = nil, forkedFromMessageID: UUID? = nil, isIncognito: Bool = false, archivedAt: Date? = nil, deletedAt: Date? = nil, themeID: String? = nil) {
         self.id = id
         self.title = title
         self.systemPrompt = systemPrompt
@@ -128,6 +130,7 @@ struct ChatSession: Identifiable, Codable {
         self.isIncognito = isIncognito
         self.archivedAt = archivedAt
         self.deletedAt = deletedAt
+        self.themeID = themeID
     }
 }
 

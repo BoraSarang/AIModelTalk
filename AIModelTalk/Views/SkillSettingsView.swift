@@ -72,7 +72,7 @@ struct SkillSettingsView: View {
                     ScrollView {
                         VStack(spacing: 0) {
                             if viewModel.availableSkills.isEmpty {
-                                EmptyStateView()
+                                SkillEmptyStateView()
                             } else if searchedSkills.isEmpty {
                                 Text("'\(searchText)'에 일치하는 스킬이 없습니다")
                                     .foregroundStyle(.secondary)
@@ -111,7 +111,7 @@ struct SkillSettingsView: View {
 
 // MARK: - 빈 상태
 
-private struct EmptyStateView: View {
+private struct SkillEmptyStateView: View {
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: "sparkles")

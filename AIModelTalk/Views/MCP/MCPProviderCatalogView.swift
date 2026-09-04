@@ -71,7 +71,7 @@ struct MCPProviderCatalogView: View {
     private var gridView: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
             ForEach(filteredTemplates) { template in
-                ProviderCard(template: template) {
+                CatalogProviderCard(template: template) {
                     onSelect(template)
                     dismiss()
                 }
@@ -94,7 +94,7 @@ struct MCPProviderCatalogView: View {
 }
 
 /// 공급자 카드 (그리드 뷰용)
-private struct ProviderCard: View {
+private struct CatalogProviderCard: View {
     let template: MCPProviderTemplate
     let action: () -> Void
 
@@ -109,7 +109,7 @@ private struct ProviderCard: View {
                         .background(Color.accentColor.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     Spacer()
-                    CategoryBadge(category: template.category)
+                    CatalogCategoryBadge(category: template.category)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -124,7 +124,7 @@ private struct ProviderCard: View {
                 }
 
                 HStack {
-                    AuthModeBadge(mode: template.authMode)
+                    CatalogAuthModeBadge(mode: template.authMode)
                     Spacer()
                 }
             }
@@ -168,8 +168,8 @@ private struct CatalogProviderRow: View {
 
                 Spacer()
 
-                AuthModeBadge(mode: template.authMode)
-                CategoryBadge(category: template.category)
+                CatalogAuthModeBadge(mode: template.authMode)
+                CatalogCategoryBadge(category: template.category)
                     .font(.caption2)
 
                 Image(systemName: "chevron.right")
@@ -190,7 +190,7 @@ private struct CatalogProviderRow: View {
 }
 
 /// 인증 방식 뱃지
-private struct AuthModeBadge: View {
+private struct CatalogAuthModeBadge: View {
     let mode: MCPAuthMode
 
     var body: some View {
@@ -223,7 +223,7 @@ private struct AuthModeBadge: View {
 }
 
 /// 카테고리 뱃지
-private struct CategoryBadge: View {
+private struct CatalogCategoryBadge: View {
     let category: MCPProviderTemplate.Category
 
     var body: some View {
@@ -240,6 +240,7 @@ private struct CategoryBadge: View {
 /// 공급자 연결 화면 — OAuth 플로우 또는 API Key 입력
 struct MCPProviderConnectView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.theme) private var theme
     @ObservedObject private var store = MCPProviderStore.shared
     @ObservedObject private var manager = MCPProviderManager.shared
 
@@ -256,24 +257,34 @@ struct MCPProviderConnectView: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             // 헤더
-            HStack {
+            HStack(spacing: 12) {
                 Image(systemName: template.icon)
-                    .font(.title)
-                    .foregroundStyle(Color.accentColor)
-                VStack(alignment: .leading) {
+                    .font(.system(size: 28))
+                    .foregroundStyle(theme.accentColor)
+                    .frame(width: 44, height: 44)
+                    .background(theme.accentColor.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 2) {
                     Text(template.name)
-                        .font(.headline)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(theme.primaryText)
                     Text(template.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 12))
+                        .foregroundStyle(theme.secondaryText)
+                        .lineLimit(2)
                 }
                 Spacer()
+                // 단계 표시기
+                stepIndicator
             }
-            .padding(.bottom, 4)
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
 
             Divider()
+                .foregroundStyle(theme.secondaryBorder)
 
             // 인증 방식별 UI
             Group {
@@ -288,15 +299,22 @@ struct MCPProviderConnectView: View {
                     selfHostedView
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
 
             if let error = connectionError {
                 Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.errorColor)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
             }
 
-            Spacer()
+            Spacer(minLength: 0)
+
+            Divider()
+                .foregroundStyle(theme.secondaryBorder)
 
             // 하단 버튼
             HStack {
@@ -304,14 +322,20 @@ struct MCPProviderConnectView: View {
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 if template.authMode == .selfHosted {
-                    Button("저장") { saveSelfHosted() }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(customURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    GradientButton(
+                        title: "저장",
+                        icon: "checkmark",
+                        action: saveSelfHosted
+                    )
+                    .disabled(customURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
         }
-        .padding()
-        .frame(width: 480, height: 320)
+        .background(theme.secondaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .frame(width: 480, height: 380)
         .alert("연결 완료", isPresented: $showSuccess) {
             Button("확인") { dismiss() }
         } message: {
@@ -319,37 +343,66 @@ struct MCPProviderConnectView: View {
         }
     }
 
+    // MARK: - 단계 표시기
+
+    private var stepIndicator: some View {
+        HStack(spacing: 6) {
+            ForEach(Step.allCases, id: \.self) { step in
+                Circle()
+                    .fill(step == currentStep ? theme.accentColor : theme.tertiaryText.opacity(0.3))
+                    .frame(width: 8, height: 8)
+            }
+        }
+    }
+
+    private enum Step: CaseIterable {
+        case select, auth, connect
+    }
+
+    private var currentStep: Step {
+        if showSuccess { return .connect }
+        if isConnecting { return .auth }
+        return .select
+    }
+
     // MARK: - OAuth 자동 연결 (DCR)
 
     private var oauthConnectView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             Image(systemName: "lock.shield")
-                .font(.system(size: 40))
-                .foregroundStyle(Color.accentColor)
+                .font(.system(size: 44))
+                .foregroundStyle(theme.accentColor)
 
             Text("OAuth 2.1 자동 연결")
-                .font(.title3.weight(.medium))
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(theme.primaryText)
 
             Text("브라우저에서 \(template.name)에 로그인하고 권한을 승인하면 자동으로 연결됩니다.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13))
+                .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             if let url = URL(string: template.docsURL) {
                 Link("설정 가이드 보기", destination: url)
-                    .font(.caption)
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.accentColor)
             }
 
             if isConnecting {
-                ProgressView("브라우저 열기 중…")
-                    .controlSize(.large)
-            } else {
-                Button {
-                    Task { await connectOAuth() }
-                } label: {
-                    Label("브라우저에서 연결", systemImage: "safari")
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("브라우저 열기 중…")
+                        .font(.system(size: 13))
+                        .foregroundStyle(theme.secondaryText)
                 }
-                .buttonStyle(.borderedProminent)
+            } else {
+                GradientButton(
+                    title: "브라우저에서 연결",
+                    icon: "safari",
+                    action: { Task { await connectOAuth() } }
+                )
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
             }
@@ -416,37 +469,46 @@ struct MCPProviderConnectView: View {
     // MARK: - OAuth 수동 (Client ID/Secret 입력)
 
     private var oauthManualView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
+            Image(systemName: "key.ring")
+                .font(.system(size: 44))
+                .foregroundStyle(theme.accentColor)
+
             Text("OAuth 2.1 수동 설정")
-                .font(.title3.weight(.medium))
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(theme.primaryText)
 
             Text("공급자 개발자 콘솔에서 OAuth 앱을 생성하고 Client ID/Secret을 발급받아 입력하세요.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13))
+                .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             // TODO: Client ID/Secret 입력 필드 + 리다이렉트 URI 안내
             Text("구현 예정: Client ID/Secret 입력")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 11))
+                .foregroundStyle(theme.tertiaryText)
         }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - API Key
 
     private var apiKeyView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             Image(systemName: "key.fill")
-                .font(.system(size: 40))
-                .foregroundStyle(Color.accentColor)
+                .font(.system(size: 44))
+                .foregroundStyle(theme.accentColor)
 
             Text("API Key 입력")
-                .font(.title3.weight(.medium))
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(theme.primaryText)
 
             Text("\(template.name) 대시보드에서 API Key를 발급받아 입력하세요.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13))
+                .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             SecureField("API Key", text: $apiKey)
                 .textFieldStyle(.roundedBorder)
@@ -455,15 +517,15 @@ struct MCPProviderConnectView: View {
 
             if let url = URL(string: template.docsURL) {
                 Link("API Key 발급 가이드", destination: url)
-                    .font(.caption)
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.accentColor)
             }
 
-            Button {
-                saveAPIKey()
-            } label: {
-                Text("저장 및 연결")
-            }
-            .buttonStyle(.borderedProminent)
+            GradientButton(
+                title: "저장 및 연결",
+                icon: "checkmark",
+                action: saveAPIKey
+            )
             .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .frame(maxWidth: .infinity)
@@ -490,18 +552,20 @@ struct MCPProviderConnectView: View {
     // MARK: - 자가 호스팅
 
     private var selfHostedView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             Image(systemName: "server.rack")
-                .font(.system(size: 40))
-                .foregroundStyle(Color.accentColor)
+                .font(.system(size: 44))
+                .foregroundStyle(theme.accentColor)
 
             Text("직접 호스팅 엔드포인트")
-                .font(.title3.weight(.medium))
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(theme.primaryText)
 
             Text("Streamable HTTP MCP 엔드포인트 URL을 입력하세요.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13))
+                .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             TextField("https://example.com/mcp", text: $customURL)
                 .textFieldStyle(.roundedBorder)
@@ -509,8 +573,8 @@ struct MCPProviderConnectView: View {
                 .frame(width: 360)
 
             Text("예: npx -y @modelcontextprotocol/server-filesystem ~/Documents")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 11))
+                .foregroundStyle(theme.tertiaryText)
         }
         .frame(maxWidth: .infinity)
     }

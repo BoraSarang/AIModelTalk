@@ -1602,6 +1602,7 @@ final class ChatViewModel: ObservableObject {
             existing.isIncognito = session.isIncognito
             existing.archivedAt = session.archivedAt
             existing.deletedAt = session.deletedAt
+            existing.themeID = session.themeID
             // 메시지 동기화 (diff upsert — 스트리밍 중 전체 삭제/재삽입 방지)
             var synced: [ChatMessageEntity] = []
             for message in session.messages {

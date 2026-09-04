@@ -23,6 +23,7 @@ enum SettingsTab: String, CaseIterable {
 }
 
 struct SettingsView: View {
+    @Environment(\.theme) private var theme
     @State private var selectedTab: SettingsTab = .general
 
     var body: some View {
@@ -35,7 +36,7 @@ struct SettingsView: View {
             tab(.memory) { MemorySettingsView() }
             tab(.hotkey) { HotkeySettingsView() }
         }
-        .frame(minWidth: 700, minHeight: 480)
+        .frame(minWidth: 700, minHeight: 520)
         .padding(0)
     }
 
@@ -50,4 +51,5 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView()
+        .environment(\.theme, ThemeBox(LightTheme()))
 }
