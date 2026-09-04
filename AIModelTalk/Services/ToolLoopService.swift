@@ -143,7 +143,12 @@ enum ToolLoopService {
 
     /// 내장 도구 이름 집합 — 에이전트가 참조하는 툴 스키마와 매칭
     static var builtinToolNames: Set<String> {
-        ["web_search", "fetch_url", "calculator"]
+        var names: Set<String> = ["web_search", "fetch_url", "calculator"]
+        // 워크스페이스 폴더가 지정된 경우에만 파일 도구 노출 (v0.3.0 축3)
+        if FileSystemTools.isAvailable {
+            names.formUnion(["list_dir", "read_file", "write_file", "edit_file"])
+        }
+        return names
     }
 
     private static func runBuiltinIfMatches(call: LLMToolCall) async -> ExecutionRecord? {
@@ -192,6 +197,27 @@ enum ToolLoopService {
                     resultPreview: "\(result)", isError: false,
                     durationMS: Date().timeIntervalSince(start) * 1000)
 
+            // ── 워크스페이스 파일 도구 (v0.3.0 축3) ──
+            case "list_dir":
+                let result = try FileSystemTools.listDir(arguments: arguments)
+                DebugLogger.shared.info("TOOL", "[FEATURE] 내장 도구 list_dir 실행")
+                return toolRecord(call, name: name, start: start, result: result)
+
+            case "read_file":
+                let result = try FileSystemTools.readFile(arguments: arguments)
+                DebugLogger.shared.info("TOOL", "[FEATURE] 내장 도구 read_file 실행")
+                return toolRecord(call, name: name, start: start, result: result)
+
+            case "write_file":
+                let result = try FileSystemTools.writeFile(arguments: arguments)
+                DebugLogger.shared.info("TOOL", "[FEATURE] 내장 도구 write_file 실행")
+                return toolRecord(call, name: name, start: start, result: result)
+
+            case "edit_file":
+                let result = try FileSystemTools.editFile(arguments: arguments)
+                DebugLogger.shared.info("TOOL", "[FEATURE] 내장 도구 edit_file 실행")
+                return toolRecord(call, name: name, start: start, result: result)
+
             default:
                 return nil
             }
@@ -203,5 +229,12 @@ enum ToolLoopService {
                 isError: true,
                 durationMS: Date().timeIntervalSince(start) * 1000)
         }
+    }
+
+    private static func toolRecord(_ call: LLMToolCall, name: String, start: Date, result: String) -> ExecutionRecord {
+        ExecutionRecord(
+            toolName: name, argumentsJSON: call.argumentsJSON,
+            resultPreview: String(result.prefix(500)), isError: false,
+            durationMS: Date().timeIntervalSince(start) * 1000)
     }
 }

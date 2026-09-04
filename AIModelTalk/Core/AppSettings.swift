@@ -150,6 +150,11 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(systemPrompt, forKey: "systemPrompt") }
     }
 
+    /// 워크스페이스(로컬 프로젝트) 폴더 경로 (v0.3.0 축3) — nil이면 파일 도구 비활성
+    @Published var workspaceFolder: String? {
+        didSet { UserDefaults.standard.set(workspaceFolder, forKey: "workspaceFolder") }
+    }
+
     /// 액센트 테마 — 전역 틴트 (v2.0 T-82)
     @Published var accentColor: String {
         didSet {
@@ -217,6 +222,7 @@ final class AppSettings: ObservableObject {
         yoloMode = defaults.object(forKey: "yoloMode") as? Bool ?? false
         agentMode = defaults.object(forKey: "agentMode") as? Bool ?? false
         systemPrompt = defaults.string(forKey: "systemPrompt") ?? "당신은 AI 모델입니다. 한국어로 답변해 주세요."
+        workspaceFolder = defaults.string(forKey: "workspaceFolder")
         accentColor = defaults.string(forKey: "accentColor") ?? "system"
         presentationMode = defaults.string(forKey: "presentationMode") ?? "window"
         hotkeyModifiers = defaults.string(forKey: "hotkeyModifiers") ?? "command"

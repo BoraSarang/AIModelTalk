@@ -180,6 +180,8 @@ final class ChatViewModel: ObservableObject {
         for skill in selectedSkills {
             prompt += "\n\n## 스킬: \(skill.name)\n\(skill.content)"
         }
+        // 워크스페이스 폴더 개요 주입 (v0.3.0 축3) — 지정 시에만
+        prompt += FileSystemTools.promptOverview()
         return prompt
     }
 
@@ -437,9 +439,9 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    /// 내장 도구(에이전트 모드) 스키마 (T-204) — 웹검색·페이지읽기·계산기
+    /// 내장 도구(에이전트 모드) 스키마 (T-204) — 웹검색·페이지읽기·계산기 (+ 워크스페이스 파일 도구, v0.3.0 축3)
     static func builtinToolDefinitions() -> [LLMToolDefinition] {
-        [
+        var defs: [LLMToolDefinition] = [
             LLMToolDefinition(name: "web_search", description: "실시간 웹 검색. 질문에 최신 정보가 필요할 때 사용하세요.", parametersJSON: """
             {"type":"object","properties":{"query":{"type":"string","description":"검색어"}},"required":["query"]}
             """),
@@ -450,6 +452,24 @@ final class ChatViewModel: ObservableObject {
             {"type":"object","properties":{"expression":{"type":"string","description":"예: (2+3)*4"}},"required":["expression"]}
             """)
         ]
+        // 워크스페이스 폴더 지정 시 파일 도구 노출 (v0.3.0 축3)
+        if FileSystemTools.isAvailable {
+            defs.append(contentsOf: [
+                LLMToolDefinition(name: "list_dir", description: "워크스페이스 폴더 안의 디렉터리 내용을 나열합니다.", parametersJSON: """
+                {"type":"object","properties":{"path":{"type":"string","description":"워크스페이스 기준 절대/상대 경로"}},"required":["path"]}
+                """),
+                LLMToolDefinition(name: "read_file", description: "워크스페이스 폴더 안의 텍스트 파일 내용을 읽습니다.", parametersJSON: """
+                {"type":"object","properties":{"path":{"type":"string","description":"파일 경로"}},"required":["path"]}
+                """),
+                LLMToolDefinition(name: "write_file", description: "워크스페이스 폴더 안에 새 파일을 만들거나 덮어씁니다.", parametersJSON: """
+                {"type":"object","properties":{"path":{"type":"string","description":"파일 경로"},"content":{"type":"string","description":"파일 내용"}},"required":["path","content"]}
+                """),
+                LLMToolDefinition(name: "edit_file", description: "워크스페이스 폴더 안의 파일에서 특정 문자열 블록을 다른 내용으로 교체합니다.", parametersJSON: """
+                {"type":"object","properties":{"path":{"type":"string","description":"파일 경로"},"oldContent":{"type":"string","description":"교체할 기존 내용"},"newContent":{"type":"string","description":"새 내용"}},"required":["path","oldContent","newContent"]}
+                """)
+            ])
+        }
+        return defs
     }
 
     /// 권한 게이트 — 정책 조회, YOLO 자동 승인, ask면 UI 프롬프트 대기

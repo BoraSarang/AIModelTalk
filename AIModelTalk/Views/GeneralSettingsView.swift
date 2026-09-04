@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct GeneralSettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
@@ -166,6 +167,27 @@ struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("워크스페이스 폴더 (로컬 파일 도구)") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(settings.workspaceFolder == nil
+                             ? "지정 안 됨 — 파일 도구(list_dir/read_file/write_file/edit_file) 비활성"
+                             : "\(urlForWorkspace.lastPathComponent) (\(settings.workspaceFolder!))")
+                            .foregroundStyle(settings.workspaceFolder == nil ? .secondary : .primary)
+                        if settings.workspaceFolder != nil {
+                            Text("모델이 이 폴더 안에서만 파일을 읽고 쓸 수 있습니다.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Button(settings.workspaceFolder == nil ? "폴더 선택…" : "변경…") { pickWorkspaceFolder() }
+                    if settings.workspaceFolder != nil {
+                        Button("해제") { settings.workspaceFolder = nil }
+                    }
+                }
+            }
+
             Section("기본 시스템 프롬프트") {
                 Text("모든 새 대화와 모델 변경 시 모델에 전달되는 기본 지시입니다. 선택한 스킬은 이 프롬프트 뒤에 누적됩니다.")
                     .font(.caption)
@@ -255,6 +277,25 @@ struct GeneralSettingsView: View {
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
         .onAppear {
             DebugLogger.shared.info("APP", "[FEATURE] 액센트 미리보기 카드 표시됨")
+        }
+    }
+
+    /// 워크스페이스 폴더 URL (v0.3.0 축3) — 표시용 lastPathComponent 계산
+    private var urlForWorkspace: URL {
+        URL(fileURLWithPath: settings.workspaceFolder ?? "")
+    }
+
+    private func pickWorkspaceFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "워크스페이스 폴더 선택"
+        panel.prompt = "선택"
+        panel.message = "모델이 읽고 쓸 수 있는 로컬 폴더를 선택하세요."
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            settings.workspaceFolder = url.path
+            DebugLogger.shared.info("APP", "[FEATURE] 워크스페이스 폴더 지정: \(url.path)")
         }
     }
 }
