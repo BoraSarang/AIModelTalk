@@ -378,7 +378,7 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    // MARK: - MCP 도구 호출 (v2.4 T-120)
+    // MARK: - MCP 도구 호출 (v2.4 T-120, v2.5 원격 공급자 지원)
 
     /// 서버별 연결 캐시 — 같은 설정이면 재사용 (stdio/http 공용, v2.4 T-122)
     @Published private(set) var mcpConnections: [UUID: any MCPTransportConnection] = [:]
@@ -396,9 +396,11 @@ final class ChatViewModel: ObservableObject {
         case allowOnce, alwaysAllow, denyOnce, alwaysDeny
     }
 
-    /// 활성화된 MCP 서버 연결 확보 — 실패 서버는 건너뛴다
+    /// 활성화된 MCP 서버 연결 확보 (로컬 stdio + 원격 공급자) — 실패 서버는 건너뛴다
     func activeMCPConnections() async -> [any MCPTransportConnection] {
         var result: [any MCPTransportConnection] = []
+
+        // 1) 로컬 stdio 서버
         for config in MCPServerStore.shared.servers where config.isEnabled {
             let connection = mcpConnections[config.id] ?? MCPConnectionFactory.make(config: config)
             mcpConnections[config.id] = connection
@@ -413,10 +415,22 @@ final class ChatViewModel: ObservableObject {
                 DebugLogger.shared.warn("MCP", "[\(config.name)] 연결 실패로 제외: \(reason)")
             }
         }
+
+        // 2) 원격 MCP 공급자 (v2.5)
+        for provider in MCPProviderStore.shared.providers where provider.isEnabled {
+            if let connection = await MCPProviderManager.shared.connect(provider) {
+                if case .ready = connection.state {
+                    result.append(connection)
+                } else if case let .failed(reason) = connection.state {
+                    DebugLogger.shared.warn("MCP", "[\(provider.displayName)] 원격 공급자 연결 실패로 제외: \(reason)")
+                }
+            }
+        }
+
         return result
     }
 
-    /// 도구 정의 목록 — 연결에서 수집
+    /// 도구 정의 목록 — 연결에서 수집 (네임스페이스 적용된 도구명 사용)
     private func toolDefinitions(from connections: [any MCPTransportConnection]) -> [LLMToolDefinition] {
         connections.flatMap { conn in
             conn.tools.map { LLMToolDefinition(name: $0.name, description: $0.description, parametersJSON: $0.inputSchemaJSON) }

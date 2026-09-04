@@ -1,16 +1,29 @@
 import SwiftUI
 
-// MARK: - MCP 서버 관리 설정 화면 (v2.4 T-121)
+// MARK: - MCP 서버 관리 설정 화면 (v2.4 T-121, v2.5 원격 MCP 공급자 추가)
 
 struct MCPSettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
-    @ObservedObject private var store = MCPServerStore.shared
-    /// 상태 프로브 결과 — 서버 ID별 (상태, 도구 수)
-    @State private var probes: [UUID: ProbeResult] = [:]
+    @ObservedObject private var stdioStore = MCPServerStore.shared
+    @ObservedObject private var remoteStore = MCPProviderStore.shared
+    @ObservedObject private var manager = MCPProviderManager.shared
+
+    /// stdio 서버 상태 프로브 결과
+    @State private var stdioProbes: [UUID: ProbeResult] = [:]
+    /// 원격 공급자 상태 프로브 결과
+    @State private var remoteProbes: [UUID: RemoteProbeResult] = [:]
     @State private var isProbing = false
     @State private var editingServer: MCPServerConfig?
+    @State private var showProviderCatalog = false
+    @State private var editingRemoteProvider: MCPProviderConfiguration?
 
     struct ProbeResult {
+        var ok: Bool
+        var toolCount: Int
+        var message: String
+    }
+
+    struct RemoteProbeResult {
         var ok: Bool
         var toolCount: Int
         var message: String
@@ -20,14 +33,15 @@ struct MCPSettingsView: View {
         Form {
             Section("MCP 도구 — 베타 (v2.4)") {
                 Toggle("도구 사용 활성화", isOn: $settings.mcpToolsEnabled)
-                Text("연결된 MCP(stdio) 서버의 도구를 모델이 호출합니다. OpenAI 호환·Anthropic 모델만 지원하며, 기본 정책은 실행 전 매번 확인입니다.")
+                Text("연결된 MCP(stdio/원격) 서버의 도구를 모델이 호출합니다. OpenAI 호환·Anthropic 모델만 지원하며, 기본 정책은 실행 전 매번 확인입니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Section {
+            // MARK: - 원격 MCP 공급자 섹션 (v2.5)
+            Section("원격 MCP 공급자 (v2.5)") {
                 HStack {
-                    Text("서버 목록")
+                    Text("공급자 목록")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -36,19 +50,43 @@ struct MCPSettingsView: View {
                             .controlSize(.small)
                     }
                     Button("상태 확인") { Task { await probeAll() } }
-                        .disabled(isProbing || store.servers.isEmpty)
+                        .disabled(isProbing || remoteStore.providers.isEmpty)
+                    Button {
+                        showProviderCatalog = true
+                    } label: {
+                        Label("공급자 연결…", systemImage: "plus")
+                    }
+                }
+                if remoteStore.providers.isEmpty {
+                    Text("연결된 원격 공급자가 없습니다. '공급자 연결…'로 Linear, Notion, GitHub 등 잘 알려진 서비스를 원탭 연결하세요.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(remoteStore.providers) { provider in
+                        remoteProviderRow(provider)
+                    }
+                }
+            }
+
+            // MARK: - 로컬 stdio 서버 섹션 (기존)
+            Section("로컬 MCP 서버 (stdio)") {
+                HStack {
+                    Text("서버 목록")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
                     Button {
                         editingServer = MCPServerConfig(name: "", command: "")
                     } label: {
                         Label("추가", systemImage: "plus")
                     }
                 }
-                if store.servers.isEmpty {
-                    Text("등록된 서버가 없습니다. '추가'로 stdio MCP 서버를 등록하세요.")
+                if stdioStore.servers.isEmpty {
+                    Text("등록된 로컬 서버가 없습니다. '추가'로 stdio MCP 서버를 등록하세요.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(store.servers) { server in
+                    ForEach(stdioStore.servers) { server in
                         serverRow(server)
                     }
                 }
@@ -59,7 +97,88 @@ struct MCPSettingsView: View {
         .sheet(item: $editingServer) { config in
             MCPServerEditSheet(config: config)
         }
+        .sheet(isPresented: $showProviderCatalog) {
+            MCPProviderCatalogView { template in
+                showProviderCatalog = false
+                // 연결 화면 표시
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    editingRemoteProvider = MCPProviderConfiguration.fromTemplate(template)
+                }
+            }
+        }
+        .sheet(item: $editingRemoteProvider) { provider in
+            MCPProviderConnectView(template: provider.template ?? MCPProviderTemplate.catalog.first!)
+                .onDisappear {
+                    // 연결 완료 후 상태 새로고침
+                    if provider.isConnected {
+                        Task { await probeRemote(provider) }
+                    }
+                }
+        }
     }
+
+    // MARK: - 원격 공급자 행
+
+    private func remoteProviderRow(_ provider: MCPProviderConfiguration) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: provider.template?.icon ?? "server.rack")
+                .font(.system(size: 14))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 24, height: 24)
+                .background(Color.accentColor.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(provider.displayName)
+                    .font(.system(size: 13, weight: .medium))
+                HStack(spacing: 4) {
+                    Text(provider.url)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    AuthModeBadge(mode: provider.authMode)
+                        .font(.caption2)
+                }
+            }
+
+            Spacer()
+
+            if let probe = remoteProbes[provider.id] {
+                Text(probe.ok ? "도구 \(probe.toolCount)개" : probe.message)
+                    .font(.caption2)
+                    .foregroundStyle(probe.ok ? Color.green : Color.orange)
+            }
+
+            Toggle("", isOn: Binding(
+                get: { provider.isEnabled },
+                set: { newValue in
+                    var updated = provider
+                    updated.isEnabled = newValue
+                    remoteStore.upsert(updated)
+                    if !newValue {
+                        manager.disconnect(provider.id)
+                    }
+                }))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .labelsHidden()
+
+            Button("편집") { editingRemoteProvider = provider }
+                .controlSize(.small)
+            Button(role: .destructive) {
+                remoteStore.remove(provider.id)
+                remoteProbes[provider.id] = nil
+                manager.disconnect(provider.id)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .controlSize(.small)
+        }
+        .padding(.vertical, 4)
+    }
+
+    // MARK: - 기존 stdio 서버 행 (기존 코드 유지)
 
     private func serverRow(_ server: MCPServerConfig) -> some View {
         HStack(spacing: 8) {
@@ -86,7 +205,7 @@ struct MCPSettingsView: View {
             }
             }
             Spacer()
-            if let probe = probes[server.id] {
+            if let probe = stdioProbes[server.id] {
                 Text(probe.ok ? "도구 \(probe.toolCount)개" : probe.message)
                     .font(.caption2)
                     .foregroundStyle(probe.ok ? Color.green : Color.orange)
@@ -96,8 +215,7 @@ struct MCPSettingsView: View {
                 set: { newValue in
                     var updated = server
                     updated.isEnabled = newValue
-                    store.upsert(updated)
-                    DebugLogger.shared.info("MCP", "서버 토글 '\(server.name)': \(newValue)")
+                    stdioStore.upsert(updated)
                 }))
                 .toggleStyle(.switch)
                 .controlSize(.mini)
@@ -105,9 +223,8 @@ struct MCPSettingsView: View {
             Button("편집") { editingServer = server }
                 .controlSize(.small)
             Button(role: .destructive) {
-                store.remove(server.id)
-                probes[server.id] = nil
-                DebugLogger.shared.info("MCP", "서버 삭제: \(server.name)")
+                stdioStore.remove(server.id)
+                stdioProbes[server.id] = nil
             } label: {
                 Image(systemName: "trash")
             }
@@ -118,31 +235,60 @@ struct MCPSettingsView: View {
 
     private func statusColor(_ server: MCPServerConfig) -> Color {
         guard server.isEnabled else { return .gray }
-        return probes[server.id]?.ok == true ? .green : (probes[server.id] != nil ? .orange : .gray)
+        return stdioProbes[server.id]?.ok == true ? .green : (stdioProbes[server.id] != nil ? .orange : .gray)
     }
 
     private func statusText(_ server: MCPServerConfig) -> String {
         guard server.isEnabled else { return "비활성화" }
-        guard let probe = probes[server.id] else { return "미확인" }
+        guard let probe = stdioProbes[server.id] else { return "미확인" }
         return probe.message
     }
 
-    /// 전체 활성 서버 프로브 — 연결 후 tools/list까지 확인
+    // MARK: - 프로브
+
+    /// 전체 프로브 (원격 + stdio)
     @MainActor
     private func probeAll() async {
         isProbing = true
         defer { isProbing = false }
-        DebugLogger.shared.info("MCP", "[SETTINGS] 상태 확인 시작 — 서버 \(store.servers.count)개")
-        for server in store.servers where server.isEnabled {
+        await probeAllRemote()
+        await probeAllStdio()
+    }
+
+    @MainActor
+    private func probeAllRemote() async {
+        DebugLogger.shared.info("MCP", "[SETTINGS] 원격 공급자 상태 확인 시작 — \(remoteStore.providers.count)개")
+        for provider in remoteStore.providers where provider.isEnabled {
+            await probeRemote(provider)
+        }
+    }
+
+    @MainActor
+    private func probeRemote(_ provider: MCPProviderConfiguration) async {
+        let connection = await manager.connect(provider)
+        if case .ready = connection?.state {
+            remoteProbes[provider.id] = RemoteProbeResult(ok: true, toolCount: connection?.tools.count ?? 0,
+                                                          message: "연결됨 · 도구 \(connection?.tools.count ?? 0)개")
+            DebugLogger.shared.info("MCP", "[SETTINGS] 원격 프로브 성공 '\(provider.displayName)': 도구 \(connection?.tools.count ?? 0)개")
+        } else if case let .failed(reason) = connection?.state {
+            remoteProbes[provider.id] = RemoteProbeResult(ok: false, toolCount: 0, message: reason)
+            DebugLogger.shared.warn("MCP", "[SETTINGS] 원격 프로브 실패 '\(provider.displayName)': \(reason)")
+        }
+    }
+
+    @MainActor
+    private func probeAllStdio() async {
+        DebugLogger.shared.info("MCP", "[SETTINGS] stdio 상태 확인 시작 — 서버 \(stdioStore.servers.count)개")
+        for server in stdioStore.servers where server.isEnabled {
             let connection = MCPConnectionFactory.make(config: server)
             await connection.connect()
             if case .ready = connection.state {
-                probes[server.id] = ProbeResult(ok: true, toolCount: connection.tools.count,
-                                                message: "연결됨 · 도구 \(connection.tools.count)개")
+                stdioProbes[server.id] = ProbeResult(ok: true, toolCount: connection.tools.count,
+                                                     message: "연결됨 · 도구 \(connection.tools.count)개")
                 DebugLogger.shared.info("MCP", "[SETTINGS] 프로브 성공 '\(server.name)': 도구 \(connection.tools.count)개")
                 connection.disconnect()
             } else if case let .failed(reason) = connection.state {
-                probes[server.id] = ProbeResult(ok: false, toolCount: 0, message: reason)
+                stdioProbes[server.id] = ProbeResult(ok: false, toolCount: 0, message: reason)
                 DebugLogger.shared.warn("MCP", "[SETTINGS] 프로브 실패 '\(server.name)': \(reason)")
             }
         }
@@ -330,6 +476,40 @@ private struct MCPServerEditSheet: View {
     MCPSettingsView()
         .padding()
         .frame(width: 480, height: 420)
+}
+
+// MARK: - 공유 뱃지 뷰 (MCPSettingsView, MCPProviderCatalogView에서 사용)
+
+private struct AuthModeBadge: View {
+    let mode: MCPAuthMode
+
+    var body: some View {
+        Text(mode.displayName)
+            .font(.caption2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(backgroundColor)
+            .foregroundStyle(foregroundColor)
+            .clipShape(Capsule())
+    }
+
+    private var backgroundColor: Color {
+        switch mode {
+        case .oauth21DCR: return Color.blue.opacity(0.15)
+        case .oauth21Manual: return Color.purple.opacity(0.15)
+        case .apiKey: return Color.green.opacity(0.15)
+        case .selfHosted: return Color.gray.opacity(0.15)
+        }
+    }
+
+    private var foregroundColor: Color {
+        switch mode {
+        case .oauth21DCR: return .blue
+        case .oauth21Manual: return .purple
+        case .apiKey: return .green
+        case .selfHosted: return .gray
+        }
+    }
 }
 
 /// 입력바 도구 셀렉터 (v2.4 T-121) — 도구 사용 토글 + 활성 서버 표시
