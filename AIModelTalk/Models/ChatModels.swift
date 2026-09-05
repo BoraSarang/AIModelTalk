@@ -108,8 +108,10 @@ struct ChatMessage: Identifiable, Codable {
     var attachments: [MessageAttachment]?
     /// MCP 도구 실행 카드 기록 (v2.4 T-120) — 어시스턴트 메시지에만 첨부
     var toolRuns: [ToolLoopService.ExecutionRecord]?
+    /// 후속 질문 제안 (T-337) — 보조 모델이 생성한 다음 질문 후보, 클릭 즉시 전송
+    var followUps: [String]? = nil
 
-    init(id: UUID = UUID(), role: ChatRole, content: String, provider: Provider? = nil, modelID: String? = nil, timestamp: Date = Date(), isStreaming: Bool = false, isError: Bool = false, promptTokens: Int? = nil, completionTokens: Int? = nil, attachments: [MessageAttachment]? = nil, toolRuns: [ToolLoopService.ExecutionRecord]? = nil) {
+    init(id: UUID = UUID(), role: ChatRole, content: String, provider: Provider? = nil, modelID: String? = nil, timestamp: Date = Date(), isStreaming: Bool = false, isError: Bool = false, promptTokens: Int? = nil, completionTokens: Int? = nil, attachments: [MessageAttachment]? = nil, toolRuns: [ToolLoopService.ExecutionRecord]? = nil, followUps: [String]? = nil) {
         self.id = id
         self.role = role
         self.content = content
@@ -122,6 +124,7 @@ struct ChatMessage: Identifiable, Codable {
         self.completionTokens = completionTokens
         self.attachments = attachments
         self.toolRuns = toolRuns
+        self.followUps = followUps
     }
 }
 

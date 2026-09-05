@@ -380,6 +380,73 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Follow up 후속질문 (v0.3.3 T-337)
+
+    /// 모델 응답에서 후속질문 추출 — 최대 3개, 번호·불릿·따옴표 제거, 빈 줄 무시 (순수)
+    nonisolated static func parseFollowUps(from response: String, maxCount: Int = 3) -> [String] {
+        var items: [String] = []
+        for rawLine in response.components(separatedBy: .newlines) {
+            var line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            // "1. ", "1) ", "- ", "• ", "* " 접두 제거
+            if let range = line.range(of: #"^(\d+[.\)]|[-•*])\s+"#, options: .regularExpression) {
+                line.removeSubrange(range)
+                line = line.trimmingCharacters(in: .whitespaces)
+            }
+            let quotes = ["\"", "'", "\u{201C}", "\u{201D}", "\u{2018}", "\u{2019}"]
+            for q in quotes where line.count > 1 && line.hasPrefix(q) && line.hasSuffix(q) {
+                line = String(line.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+            }
+            guard !line.isEmpty else { continue }
+            items.append(String(line.prefix(120)))
+            if items.count >= maxCount { break }
+        }
+        return items
+    }
+
+    /// 후속질문 생성 — 보조 모델 사용, 채팅 모드 텍스트 응답에만, 실패 시 무음 (섹션 숨김)
+    private func generateFollowUps(sessionID: UUID, messageID: UUID, userText: String, assistantText: String) {
+        guard let model = auxiliaryModel else { return }
+        let prompt = """
+        다음 대화에서 사용자가 다음에 물을 만한 후속 질문을 3개 만들어주세요.
+        규칙: 한국어, 각 40자 이내, 한 줄에 하나씩, 번호·불릿·따옴표 없이 질문 본문만 출력.
+
+        사용자: \(String(userText.prefix(300)))
+        어시스턴트: \(String(assistantText.prefix(600)))
+        """
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let client = try AIClientFactory.client(provider: model.provider, modelID: model.id)
+                var text = ""
+                let stream = client.stream(messages: [ChatMessage(role: .user, content: prompt)], systemPrompt: nil, onUsage: nil)
+                for try await chunk in stream { text += chunk }
+                let items = Self.parseFollowUps(from: text)
+                guard !items.isEmpty else { return }
+                guard self.sessions.contains(where: { $0.id == sessionID }) else { return }
+                self.mutateMessages(of: sessionID) { msgs in
+                    for i in msgs.indices where msgs[i].id == messageID {
+                        msgs[i].followUps = items
+                    }
+                }
+                if let idx = self.sessions.firstIndex(where: { $0.id == sessionID }) {
+                    self.saveSession(self.sessions[idx])
+                }
+                DebugLogger.shared.info("MODE", "[FEATURE] 후속질문 생성됨: \(items.count)개")
+            } catch {
+                DebugLogger.shared.debug("MODE", "후속질문 생성 실패 — 무음 폴백: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// 후속질문 클릭 즉시 전송 (T-337)
+    func sendFollowUp(_ text: String, in sessionID: UUID) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isLoading,
+              sessions.contains(where: { $0.id == sessionID }) else { return }
+        DebugLogger.shared.info("MODE", "[FEATURE] 후속질문 전송: \(trimmed.prefix(40))…")
+        sendMessage(trimmed, to: sessionID)
+    }
+
     // MARK: - MCP 도구 호출 (v2.4 T-120, v2.5 원격 공급자 지원)
 
     /// 서버별 연결 캐시 — 같은 설정이면 재사용 (stdio/http 공용, v2.4 T-122)
@@ -977,6 +1044,24 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    /// 질문 목차 점프 (T-338) — 검색 점프와 동일 경로 (하이라이트 + 절대 스크롤)
+    func jumpToMessage(_ messageID: UUID, in sessionID: UUID) {
+        currentSessionID = sessionID
+        _cachedSession = nil
+        highlightedMessageID = messageID
+        DebugLogger.shared.info("SEARCH", "[FEATURE] 질문 목차 이동 실행됨: 메시지 \(messageID)")
+        NotificationCenter.default.post(
+            name: ChatViewModel.scrollToMessage,
+            object: nil,
+            userInfo: ["id": messageID]
+        )
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            if self?.highlightedMessageID == messageID {
+                self?.highlightedMessageID = nil
+            }
+        }
+    }
+
     /// API 실측 토큰 수를 어시스턴트 메시지에 기록 (v1.9 T-76)
     func attachTokenCounts(prompt: Int, completion: Int, messageID: UUID, sessionID: UUID) {
         guard let idx = sessions.firstIndex(where: { $0.id == sessionID }),
@@ -1557,6 +1642,14 @@ final class ChatViewModel: ObservableObject {
                 DebugLogger.shared.perf("SEND", "response_time=\(Int(elapsed))ms chunks=\(ui.chunkCount) chars=\(ui.fullText.count)")
 
                 self.finishStreaming(messageID: ctx.assistantMessageID, sessionID: ctx.sessionID, finalText: ui.fullText)
+                // 후속질문 생성 (T-337) — 채팅 모드 텍스트 응답에만, 실패해도 조용함
+                if let session = sessions.first(where: { $0.id == ctx.sessionID }),
+                   session.mode == .chat,
+                   !ui.fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   session.messages.last(where: { $0.role == .assistant && $0.id == ctx.assistantMessageID })?.attachments == nil {
+                    let userText = session.messages.last(where: { $0.role == .user })?.content ?? ""
+                    self.generateFollowUps(sessionID: ctx.sessionID, messageID: ctx.assistantMessageID, userText: userText, assistantText: ui.fullText)
+                }
                 // 실행 카드 부착 — 도구 경로로 실행된 기록 (v2.4 T-120)
                 if !toolRecords.isEmpty {
                     self.attachToolRuns(toolRecords, messageID: ctx.assistantMessageID, sessionID: ctx.sessionID)

@@ -206,6 +206,10 @@ struct MessageListView: View {
                         if let sessionID = viewModel.currentSessionID {
                             viewModel.forkSession(at: message.id, from: sessionID)
                         }
+                    }, onSendFollowUp: { text in
+                        if let sessionID = viewModel.currentSessionID {
+                            viewModel.sendFollowUp(text, in: sessionID)
+                        }
                     })
                         .id(message.id)
                         // 검색 결과 이동 시 대상 메시지 플래시 하이라이트 (v2.1 T-97)

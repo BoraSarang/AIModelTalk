@@ -112,9 +112,11 @@ import SwiftData
     var attachmentsData: Data?
     /// MCP 도구 실행 카드 (v2.4 T-120) — [ExecutionRecord] JSON
     var toolRunsData: Data?
+    /// 후속 질문 제안 (T-337) — [String] JSON
+    var followUpsData: Data?
     var session: ChatSessionEntity?
 
-    init(id: UUID = UUID(), roleRaw: String, content: String, providerRaw: String? = nil, modelID: String? = nil, timestamp: Date, isError: Bool = false, promptTokens: Int? = nil, completionTokens: Int? = nil, attachmentsData: Data? = nil, toolRunsData: Data? = nil, session: ChatSessionEntity? = nil) {
+    init(id: UUID = UUID(), roleRaw: String, content: String, providerRaw: String? = nil, modelID: String? = nil, timestamp: Date, isError: Bool = false, promptTokens: Int? = nil, completionTokens: Int? = nil, attachmentsData: Data? = nil, toolRunsData: Data? = nil, followUpsData: Data? = nil, session: ChatSessionEntity? = nil) {
         self.id = id
         self.roleRaw = roleRaw
         self.content = content
@@ -126,6 +128,7 @@ import SwiftData
         self.completionTokens = completionTokens
         self.attachmentsData = attachmentsData
         self.toolRunsData = toolRunsData
+        self.followUpsData = followUpsData
         self.session = session
     }
 
@@ -137,6 +140,10 @@ import SwiftData
         let toolRunsData: Data? = {
             guard let runs = message.toolRuns, !runs.isEmpty else { return nil }
             return try? JSONEncoder().encode(runs)
+        }()
+        let followUpsData: Data? = {
+            guard let items = message.followUps, !items.isEmpty else { return nil }
+            return try? JSONEncoder().encode(items)
         }()
         self.init(
             id: message.id,
@@ -150,6 +157,7 @@ import SwiftData
             completionTokens: message.completionTokens,
             attachmentsData: attachmentsData,
             toolRunsData: toolRunsData,
+            followUpsData: followUpsData,
             session: session
         )
     }
@@ -163,6 +171,9 @@ import SwiftData
         let toolRuns: [ToolLoopService.ExecutionRecord]? = toolRunsData.flatMap {
             try? JSONDecoder().decode([ToolLoopService.ExecutionRecord].self, from: $0)
         }
+        let followUps: [String]? = followUpsData.flatMap {
+            try? JSONDecoder().decode([String].self, from: $0)
+        }
         return ChatMessage(
             id: id,
             role: role,
@@ -174,7 +185,8 @@ import SwiftData
             promptTokens: promptTokens,
             completionTokens: completionTokens,
             attachments: attachments,
-            toolRuns: toolRuns
+            toolRuns: toolRuns,
+            followUps: followUps
         )
     }
 }

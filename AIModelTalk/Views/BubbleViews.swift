@@ -11,12 +11,14 @@ struct MessageBubbleView: View {
     var sidePadding: CGFloat = 16
     /// 이 지점부터 분기 액션 — 웹뷰가 우클릭을 막으므로 푸터 버튼으로 제공 (v2.1 T-73 보강)
     var onFork: (() -> Void)? = nil
+    /// 후속질문 클릭 즉시 전송 (T-337)
+    var onSendFollowUp: ((String) -> Void)? = nil
 
     var body: some View {
         if message.role == .user {
             UserBubbleView(message: message, sidePadding: sidePadding, onFork: onFork)
         } else {
-            AssistantBubbleView(message: message, isStreaming: isStreaming, sidePadding: sidePadding, onFork: onFork)
+            AssistantBubbleView(message: message, isStreaming: isStreaming, sidePadding: sidePadding, onFork: onFork, onSendFollowUp: onSendFollowUp)
         }
     }
 }
@@ -88,6 +90,7 @@ struct AssistantBubbleView: View {
     var isStreaming: Bool = false
     var sidePadding: CGFloat = 16
     var onFork: (() -> Void)? = nil
+    var onSendFollowUp: ((String) -> Void)? = nil
     @State private var toastMsg = ""
     @State private var showToast = false
     @Environment(\.theme) private var theme
@@ -259,6 +262,8 @@ struct AssistantBubbleView: View {
                         .foregroundStyle(.secondary)
                         .opacity(0.8)
                     }
+
+                    followUpSection
                 }
             }
 
@@ -276,6 +281,49 @@ struct AssistantBubbleView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .padding(.bottom, 4)
             }
+        }
+    }
+
+    /// 후속질문 섹션 (T-337) — 행 클릭 즉시 전송
+    @ViewBuilder
+    private var followUpSection: some View {
+        if !isStreaming, !message.content.isEmpty,
+           let items = message.followUps, !items.isEmpty,
+           let onSend = onSendFollowUp {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 5) {
+                    Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                        .font(.system(size: 11))
+                    Text("Follow up")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(theme.secondaryText)
+                .padding(.top, 8)
+                .padding(.bottom, 2)
+                ForEach(items, id: \.self) { item in
+                    Button {
+                        onSend(item)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(item)
+                                .font(.system(size: 13))
+                                .foregroundStyle(theme.primaryText)
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: 8)
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 11))
+                                .foregroundStyle(theme.tertiaryText)
+                        }
+                        .contentShape(Rectangle())
+                        .padding(.vertical, 7)
+                    }
+                    .buttonStyle(.plain)
+                    .help("이 질문으로 바로 전송")
+                    Divider()
+                        .foregroundStyle(theme.secondaryBorder.opacity(0.5))
+                }
+            }
+            .padding(.trailing, 60)
         }
     }
 

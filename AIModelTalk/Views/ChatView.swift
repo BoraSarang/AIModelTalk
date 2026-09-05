@@ -9,6 +9,7 @@ struct ChatView: View {
     @State private var isAlwaysOnTop = false
     @State private var showRenameSheet = false
     @State private var renameText = ""
+    @State private var showQuestionOutline = false
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -71,6 +72,18 @@ struct ChatView: View {
                         .foregroundStyle(isAlwaysOnTop ? theme.accentColor : theme.secondaryText)
                 }
                 .help(isAlwaysOnTop ? "항상 위 해제" : "항상 위에 고정")
+                Button {
+                    showQuestionOutline = true
+                } label: {
+                    Image(systemName: "list.bullet")
+                        .foregroundStyle(theme.secondaryText)
+                }
+                .help("질문 목차 — 내 질문으로 바로 이동")
+                .popover(isPresented: $showQuestionOutline, arrowEdge: .bottom) {
+                    QuestionOutlinePopover(viewModel: viewModel) {
+                        showQuestionOutline = false
+                    }
+                }
             }
         }
         .sheet(isPresented: $showRenameSheet) {
@@ -102,7 +115,7 @@ struct ChatView: View {
         .padding(20)
     }
 
-    private func toggleAlwaysOnTop() {
+        private func toggleAlwaysOnTop() {
         isAlwaysOnTop.toggle()
         if let window = NSApp.keyWindow {
             window.level = isAlwaysOnTop ? .floating : .normal
@@ -139,4 +152,71 @@ struct ChatView: View {
 #Preview {
     ChatView(viewModel: ChatViewModel())
         .frame(width: 700, height: 500)
+}
+
+// MARK: - 질문 목차 팝오버 (T-338)
+
+/// 세션 내 내 질문 목록 — 탭하면 해당 말풍선으로 점프 (검색 점프와 동일 경로)
+struct QuestionOutlinePopover: View {
+    @ObservedObject var viewModel: ChatViewModel
+    var onDismiss: () -> Void
+    @Environment(\.theme) private var theme
+
+    private var questions: [(id: UUID, preview: String)] {
+        guard let messages = viewModel.currentSession?.messages else { return [] }
+        return messages.filter { $0.role == .user }.map { msg in
+            let oneLine = msg.content
+                .components(separatedBy: .newlines).first?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let preview = oneLine.isEmpty ? "(이미지 첨부)" : String(oneLine.prefix(40))
+            return (msg.id, preview)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("질문 목차")
+                .font(.caption.bold())
+                .foregroundStyle(theme.secondaryText)
+            Divider()
+            if questions.isEmpty {
+                Text("아직 질문이 없습니다")
+                    .font(.caption)
+                    .foregroundStyle(theme.tertiaryText)
+                    .padding(.vertical, 8)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(questions, id: \.id) { item in
+                            Button {
+                                if let sessionID = viewModel.currentSessionID {
+                                    viewModel.jumpToMessage(item.id, in: sessionID)
+                                }
+                                onDismiss()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "bubble.right")
+                                        .font(.caption2)
+                                        .foregroundStyle(theme.tertiaryText)
+                                    Text(item.preview)
+                                        .font(.caption)
+                                        .foregroundStyle(theme.primaryText)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                    Spacer()
+                                }
+                                .contentShape(Rectangle())
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .frame(width: 280)
+                .frame(maxHeight: 300)
+            }
+        }
+        .padding(10)
+    }
 }
