@@ -1934,6 +1934,11 @@ final class ChatViewModel: ObservableObject {
             existing.archivedAt = session.archivedAt
             existing.deletedAt = session.deletedAt
             existing.themeID = session.themeID
+            // 모드 + 모드별 선택 모델 영속 (T-341) — insert 때만 저장되던 누락 해소
+            existing.modeRaw = session.mode.rawValue
+            existing.selectedImageModelID = session.selectedImageModelID
+            existing.selectedCodingModelID = session.selectedCodingModelID
+            existing.selectedAudioModelID = session.selectedAudioModelID
             // 메시지 동기화 (diff upsert — 스트리밍 중 전체 삭제/재삽입 방지)
             var synced: [ChatMessageEntity] = []
             for message in session.messages {
@@ -1942,6 +1947,9 @@ final class ChatViewModel: ObservableObject {
                     entity.isError = message.isError
                     entity.promptTokens = message.promptTokens
                     entity.completionTokens = message.completionTokens
+                    // 생성 후 붙는 필드도 갱신 (T-341) — followUps·toolRuns는 insert 이후에 생긴다
+                    entity.followUpsData = message.followUps.flatMap { try? JSONEncoder().encode($0) }
+                    entity.toolRunsData = message.toolRuns.flatMap { try? JSONEncoder().encode($0) }
                     let attachmentsData: Data? = {
                         guard let attachments = message.attachments, !attachments.isEmpty else { return nil }
                         return try? JSONEncoder().encode(attachments)
@@ -1962,7 +1970,12 @@ final class ChatViewModel: ObservableObject {
             let entity = ChatSessionEntity(from: session)
             context.insert(entity)
         }
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            // 저장 실패 침묵 금지 (T-341) — 실패하면 다음 실행에 빈 화면이 된다
+            DebugLogger.shared.error("PERSIST", "[E-MAC-STR-1003] 세션 저장 실패: \(error.localizedDescription)")
+        }
     }
 
     private func deleteSessionEntity(_ id: UUID) {
@@ -1977,8 +1990,14 @@ final class ChatViewModel: ObservableObject {
 
     private func loadSessions() {
         let descriptor = FetchDescriptor<ChatSessionEntity>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
-        guard let entities = try? context.fetch(descriptor) else { return }
-        sessions = entities.map { $0.toChatSession() }
+        do {
+            let entities = try context.fetch(descriptor)
+            sessions = entities.map { $0.toChatSession() }
+        } catch {
+            // 빈 화면으로 속지 않도록 실패는 반드시 기록 (T-341 — 공유 저장소 충돌 선례)
+            DebugLogger.shared.error("PERSIST", "[E-MAC-STR-1002] 세션 로드 실패: \(error.localizedDescription)")
+            sessions = []
+        }
         migrateLegacyPromptSnapshots()
     }
 

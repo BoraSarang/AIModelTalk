@@ -16,10 +16,15 @@ import SwiftData
     var archivedAt: Date?
     var deletedAt: Date?
     var themeID: String?
+    /// 용도 모드 + 모드별 선택 모델 (T-341) — 없으면 채팅·미선택으로 복원
+    var modeRaw: String?
+    var selectedImageModelID: String?
+    var selectedCodingModelID: String?
+    var selectedAudioModelID: String?
     @Relationship(deleteRule: .cascade, inverse: \ChatMessageEntity.session)
     var messages: [ChatMessageEntity]
 
-    init(id: UUID = UUID(), title: String, systemPrompt: String, createdAt: Date, updatedAt: Date, currentModelID: String? = nil, currentProviderRaw: String? = nil, selectedSkillsJSON: String? = nil, parentSessionID: UUID? = nil, forkedFromMessageID: UUID? = nil, isIncognito: Bool = false, archivedAt: Date? = nil, deletedAt: Date? = nil, themeID: String? = nil, messages: [ChatMessageEntity] = []) {
+    init(id: UUID = UUID(), title: String, systemPrompt: String, createdAt: Date, updatedAt: Date, currentModelID: String? = nil, currentProviderRaw: String? = nil, selectedSkillsJSON: String? = nil, parentSessionID: UUID? = nil, forkedFromMessageID: UUID? = nil, isIncognito: Bool = false, archivedAt: Date? = nil, deletedAt: Date? = nil, themeID: String? = nil, modeRaw: String? = nil, selectedImageModelID: String? = nil, selectedCodingModelID: String? = nil, selectedAudioModelID: String? = nil, messages: [ChatMessageEntity] = []) {
         self.id = id
         self.title = title
         self.systemPrompt = systemPrompt
@@ -34,6 +39,10 @@ import SwiftData
         self.archivedAt = archivedAt
         self.deletedAt = deletedAt
         self.themeID = themeID
+        self.modeRaw = modeRaw
+        self.selectedImageModelID = selectedImageModelID
+        self.selectedCodingModelID = selectedCodingModelID
+        self.selectedAudioModelID = selectedAudioModelID
         self.messages = messages
     }
 
@@ -58,6 +67,10 @@ import SwiftData
             archivedAt: session.archivedAt,
             deletedAt: session.deletedAt,
             themeID: session.themeID,
+            modeRaw: session.mode.rawValue,
+            selectedImageModelID: session.selectedImageModelID,
+            selectedCodingModelID: session.selectedCodingModelID,
+            selectedAudioModelID: session.selectedAudioModelID,
             messages: messageEntities
         )
         for msg in messageEntities {
@@ -94,7 +107,11 @@ import SwiftData
             isIncognito: isIncognito,
             archivedAt: archivedAt,
             deletedAt: deletedAt,
-            themeID: themeID
+            themeID: themeID,
+            mode: modeRaw.flatMap { ChatMode(rawValue: $0) } ?? .chat,
+            selectedImageModelID: selectedImageModelID,
+            selectedCodingModelID: selectedCodingModelID,
+            selectedAudioModelID: selectedAudioModelID
         )
     }
 }

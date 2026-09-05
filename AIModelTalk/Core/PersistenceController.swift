@@ -7,9 +7,19 @@ final class PersistenceController {
     let modelContainer: ModelContainer
     let modelContext: ModelContext
 
+    /// 앱 전용 저장소 URL (T-341) — SwiftData 기본값(공유 default.store)은
+    /// 타 앱과 충돌해 세션이 저장·로드되지 않는 원인이었음. 절대 공유 파일에 쓰지 않는다.
+    nonisolated static var storeURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return base.appending(path: "AIModelTalk", directoryHint: .isDirectory)
+            .appending(path: "AIModelTalk.store", directoryHint: .notDirectory)
+    }
+
     private init() {
+        let url = Self.storeURL
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let schema = Schema([ChatSessionEntity.self, ChatMessageEntity.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let config = ModelConfiguration(schema: schema, url: url)
         do {
             modelContainer = try ModelContainer(for: schema, configurations: [config])
             modelContext = ModelContext(modelContainer)
