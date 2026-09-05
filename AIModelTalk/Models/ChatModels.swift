@@ -7,18 +7,8 @@ struct AIModel: Identifiable, Codable, Hashable {
     var isFree: Bool = true
     var contextLimit: Int = 128_000
 
-    /// 백만 토큰당 USD 가격 (v0.2.7 축2) — nil이면 가격 미등록, 0이면 무료
-    var inputPricePerM: Double?
-    var outputPricePerM: Double?
-
     var ttft: TimeInterval?
     var totalTime: TimeInterval?
-
-    /// 가격이 등록돼 있고 0보다 크면 유료 취급 (v0.2.7)
-    var isPaid: Bool {
-        guard !isFree else { return false }
-        return (inputPricePerM ?? 0) > 0 || (outputPricePerM ?? 0) > 0
-    }
 
     /// 이미지 입력(멀티모달) 지원 여부 — 모델 ID 휴리스틱 (v1.8 T-71)
     var supportsVision: Bool {
@@ -115,20 +105,6 @@ struct ChatMessage: Identifiable, Codable {
     /// MCP 도구 실행 카드 기록 (v2.4 T-120) — 어시스턴트 메시지에만 첨부
     var toolRuns: [ToolLoopService.ExecutionRecord]?
 
-    /// 이 메시지의 실비용 USD (v0.2.7 축2) — 가격 등록된 모델 × 실측 토큰, 미등록/무료면 nil(=0)
-    @MainActor
-    var costUSD: Double? {
-        guard let promptTokens, let completionTokens else { return nil }
-        guard let provider, let modelID,
-              let model = ModelCatalog.shared.model(id: modelID, provider: provider),
-              !model.isFree else { return nil }
-        let input = (model.inputPricePerM ?? 0) * Double(promptTokens) / 1_000_000
-        let output = (model.outputPricePerM ?? 0) * Double(completionTokens) / 1_000_000
-        let total = input + output
-        guard total > 0 else { return nil }
-        return total
-    }
-
     init(id: UUID = UUID(), role: ChatRole, content: String, provider: Provider? = nil, modelID: String? = nil, timestamp: Date = Date(), isStreaming: Bool = false, isError: Bool = false, promptTokens: Int? = nil, completionTokens: Int? = nil, attachments: [MessageAttachment]? = nil, toolRuns: [ToolLoopService.ExecutionRecord]? = nil) {
         self.id = id
         self.role = role
@@ -203,39 +179,5 @@ struct SessionTokens {
     /// "1.2k" 형식 축약
     static func compact(_ n: Int) -> String {
         n >= 1000 ? String(format: "%.1fk", Double(n) / 1000) : "\(n)"
-    }
-}
-
-/// 세션 누적 실비용 USD (v0.2.7 축2) — 메시지별 costUSD 합계
-struct SessionCost {
-    let messages: [ChatMessage]
-
-    @MainActor
-    static func calculated(messages: [ChatMessage]) -> SessionCost {
-        SessionCost(messages: messages)
-    }
-
-    /// 누적 USD — 미등록/무료 메시지는 0으로 집계
-    @MainActor
-    var totalUSD: Double {
-        messages.compactMap(\.costUSD).reduce(0, +)
-    }
-
-    /// 한 번이라도 유료 비용이 산출된 메시지 수
-    @MainActor
-    var paidMessageCount: Int {
-        messages.compactMap(\.costUSD).filter { $0 > 0 }.count
-    }
-
-    /// "0.00012" USD 형식 — 0이면 nil 반환
-    static func formatUSD(_ value: Double?) -> String? {
-        guard let value, value > 0 else { return nil }
-        if value >= 1 {
-            return String(format: "$%.2f", value)
-        }
-        if value >= 0.01 {
-            return String(format: "$%.4f", value)
-        }
-        return String(format: "$%.5f", value)
     }
 }

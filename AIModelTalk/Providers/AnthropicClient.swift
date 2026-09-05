@@ -102,6 +102,7 @@ struct AnthropicClient: ChatClient {
                     guard let http = response as? HTTPURLResponse else {
                         throw AppError.network("응답 없음")
                     }
+                    TokenQuotaStore.capture(headers: http.allHeaderFields, provider: .anthropic)
                     if !(200..<300).contains(http.statusCode) {
                         var errBody = Data()
                         for try await b in bytes { errBody.append(b) }
@@ -217,6 +218,7 @@ struct AnthropicClient: ChatClient {
                         throw AppError.network("응답 없음")
                     }
                     DebugLogger.shared.info("API-ANTHROPIC", "응답 상태: HTTP \(http.statusCode)")
+                    TokenQuotaStore.capture(headers: http.allHeaderFields, provider: .anthropic)
 
                     if !(200..<300).contains(http.statusCode) {
                         var errBody = Data()

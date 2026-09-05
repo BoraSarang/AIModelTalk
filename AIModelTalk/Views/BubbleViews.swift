@@ -202,20 +202,6 @@ struct AssistantBubbleView: View {
                         .monospacedDigit()
                         .foregroundStyle(.tertiary)
                         .help("API 실측 토큰 (프롬프트/완료)")
-                        // 실비용 표시 — 가격 등록 유료 모델은 실제 USD, 무료/미등록은 $0.00 (v0.2.7 축2)
-                        if let cost = message.costUSD {
-                            Text(SessionCost.formatUSD(cost) ?? "$0.00")
-                                .font(.caption2)
-                                .monospacedDigit()
-                                .foregroundStyle(theme.accentColor)
-                                .help("실비용 USD (모델 가격 × 측정 토큰)")
-                        } else {
-                            Text("$0.00")
-                                .font(.caption2)
-                                .monospacedDigit()
-                                .foregroundStyle(.tertiary)
-                                .help("무료/가격 미등록 모델")
-                        }
                     }
 
                     if !isStreaming && !message.content.isEmpty {

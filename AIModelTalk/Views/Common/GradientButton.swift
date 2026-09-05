@@ -22,6 +22,11 @@ struct GradientButton: View {
         return theme.accentColor
     }
 
+    /// primary 배경색 대비 자동 반전 글자색 — 다크 테마의 밝은 accent 위 흰 글자 미노출 방지 (T-324)
+    private var primaryForeground: Color {
+        buttonColor.isLightColor ? .black : .white
+    }
+
     var body: some View {
         Button(action: {
             guard !isDisabled, !isLoading else { return }
@@ -31,7 +36,7 @@ struct GradientButton: View {
                 if isLoading {
                     ProgressView()
                         .controlSize(.small)
-                        .tint(isPrimary ? .white : buttonColor)
+                        .tint(isPrimary ? primaryForeground : buttonColor)
                 } else if let icon = icon {
                     Image(systemName: icon)
                         .font(.system(size: 14, weight: .medium))
@@ -39,7 +44,7 @@ struct GradientButton: View {
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))
             }
-            .foregroundColor(isPrimary ? .white : buttonColor)
+            .foregroundColor(isPrimary ? primaryForeground : buttonColor)
             .padding(.horizontal, 20)
             .padding(.vertical, 10)
             .background(
