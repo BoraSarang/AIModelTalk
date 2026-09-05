@@ -101,6 +101,8 @@ struct MessageListView: View {
     /// 말풍선 문서 좌표 캐시 — (v2.1 T-109b에서 폐기: preference 좌표가 스크롤 의존이라 진동)
     /// 대신 MessageAnchorRegistry의 AppKit 뷰에서 직접 변환한다.
     @State private var pendingJumpMessageID: UUID?
+    /// 되돌리기 확인 대기 메시지 — 파괴적 삭제라 alert 확인 필수 (T-339)
+    @State private var pendingRewindMessageID: UUID?
     /// 마지막 점프 적용 offset — 동일 값 재적용 방지(수렴 판정)용 (v2.1 T-109)
     @State private var lastAppliedJumpOffset: CGFloat?
 
@@ -134,6 +136,20 @@ struct MessageListView: View {
                 }
             }
             .animation(.easeOut(duration: 0.18), value: isAtBottom)
+            .alert("되돌리기", isPresented: Binding(
+                get: { pendingRewindMessageID != nil },
+                set: { if !$0 { pendingRewindMessageID = nil } }
+            )) {
+                Button("되돌리기", role: .destructive) {
+                    if let id = pendingRewindMessageID, let sid = viewModel.currentSessionID {
+                        viewModel.rewindSession(to: id, from: sid)
+                    }
+                    pendingRewindMessageID = nil
+                }
+                Button("취소", role: .cancel) { pendingRewindMessageID = nil }
+            } message: {
+                Text(rewindConfirmText)
+            }
             .onChange(of: viewModel.currentSessionID) { _ in
                 if let session = viewModel.currentSession {
                     viewModel.restoreSessionState(session)
@@ -202,6 +218,9 @@ struct MessageListView: View {
                     emptyState
                 }
                 ForEach(viewModel.currentSession?.messages ?? []) { message in
+                    let canRewindMessage = message.role == .user
+                        && viewModel.streamingMessageID != message.id
+                        && (viewModel.currentSession?.messages.last?.id != message.id)
                     MessageBubbleView(message: message, isStreaming: viewModel.streamingMessageID == message.id, onFork: {
                         if let sessionID = viewModel.currentSessionID {
                             viewModel.forkSession(at: message.id, from: sessionID)
@@ -210,7 +229,9 @@ struct MessageListView: View {
                         if let sessionID = viewModel.currentSessionID {
                             viewModel.sendFollowUp(text, in: sessionID)
                         }
-                    })
+                    }, onRewind: {
+                        pendingRewindMessageID = message.id
+                    }, canRewind: canRewindMessage)
                         .id(message.id)
                         // 검색 결과 이동 시 대상 메시지 플래시 하이라이트 (v2.1 T-97)
                         .background(
@@ -231,6 +252,16 @@ struct MessageListView: View {
                                     viewModel.forkSessionAndRerun(at: message.id, from: sessionID)
                                 } label: {
                                     Label("이 지점에서 재실행 (현재 모델)", systemImage: "arrow.counterclockwise")
+                                }
+                                if message.role == .user,
+                                   let messages = viewModel.currentSession?.messages,
+                                   messages.last?.id != message.id {
+                                    Divider()
+                                    Button(role: .destructive) {
+                                        pendingRewindMessageID = message.id
+                                    } label: {
+                                        Label("이 지점부터 되돌리기", systemImage: "arrow.uturn.backward")
+                                    }
                                 }
                             }
                         }
@@ -356,6 +387,17 @@ struct MessageListView: View {
     }
 
     // MARK: - 검색 결과 메시지 점프 (v2.1 T-97 고도화)
+
+    /// 되돌리기 확인 문구 (T-339) — 삭제될 메시지 수 + 기억 회수 안내
+    private var rewindConfirmText: String {
+        guard let id = pendingRewindMessageID,
+              let messages = viewModel.currentSession?.messages,
+              let cutIndex = messages.firstIndex(where: { $0.id == id }) else {
+            return "이 지점 이후의 대화가 삭제됩니다."
+        }
+        let count = messages.count - (cutIndex + 1)
+        return "이후 \(count)개 메시지가 삭제되고, 겹치는 자동 기억도 함께 회수됩니다. (수동·핀 기억은 보호)\n되돌린 지점부터 다시 시작합니다."
+    }
 
     /// 점프 시작 — WKWebView 비동기 높이 수렴을 고려해 수렴형 보정 점프를 예약한다 (v1.3 패턴 재사용)
     private func beginMessageJump(to id: UUID) {

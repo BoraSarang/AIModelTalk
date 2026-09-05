@@ -142,4 +142,27 @@ enum MemoryService {
         }
         return current
     }
+
+    // MARK: - 되돌리기 회수 (T-339)
+
+    /// 삭제된 대화 구간과 겹치는 자동·미핀 기억만 제거 (순수)
+    /// 수동·핀 기억은 항상 보호. 판정: 포함 관계(양방향) OR 삭제 구간 내
+    /// 개별 메시지와의 bigram Dice 0.25 이상 (통째 대비는 긴 구간에서 희석되므로
+    /// 메시지 단위로 스코어링. 한국어 교착어미 탓에 포함 관계가 안 잡히는 경우를 보완).
+    /// 출처 추적이 없어 최선노력(best-effort) — 삭제 구간에 같은 문구가 있으면
+    /// 이전 턴에서 온 기억도 함께 회수될 수 있음.
+    nonisolated static func retract(matchingDeletedText deleted: String, from items: [MemoryItem]) -> [MemoryItem] {
+        let t = deleted.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return items }
+        let parts = t.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return items.filter { item in
+            guard item.isAuto && !item.isPinned else { return true }
+            let c = item.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !c.isEmpty else { return false }
+            if c.contains(t) || t.contains(c) { return false }
+            return !parts.contains { MemoryRetrieval.bigramScore($0, c) >= 0.25 }
+        }
+    }
 }
