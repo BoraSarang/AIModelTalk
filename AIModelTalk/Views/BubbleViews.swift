@@ -13,10 +13,13 @@ struct MessageBubbleView: View {
     var onFork: (() -> Void)? = nil
     /// 후속질문 클릭 즉시 전송 (T-337)
     var onSendFollowUp: ((String) -> Void)? = nil
+    /// 되돌리기 버튼 — 확인 다이얼로그는 호출부가 담당 (T-340)
+    var onRewind: (() -> Void)? = nil
+    var canRewind: Bool = false
 
     var body: some View {
         if message.role == .user {
-            UserBubbleView(message: message, sidePadding: sidePadding, onFork: onFork)
+            UserBubbleView(message: message, sidePadding: sidePadding, onFork: onFork, onRewind: onRewind, canRewind: canRewind)
         } else {
             AssistantBubbleView(message: message, isStreaming: isStreaming, sidePadding: sidePadding, onFork: onFork, onSendFollowUp: onSendFollowUp)
         }
@@ -29,54 +32,84 @@ struct UserBubbleView: View {
     let message: ChatMessage
     var sidePadding: CGFloat = 16
     var onFork: (() -> Void)? = nil
+    /// 되돌리기 버튼 — 확인 다이얼로그는 호출부(MessageListView)가 담당 (T-340)
+    var onRewind: (() -> Void)? = nil
+    /// 이후 메시지가 있을 때만 되돌리기 표시 (없으면 잘라낼 게 없음)
+    var canRewind: Bool = false
     @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 6) {
-            Spacer(minLength: 60)
+        VStack(spacing: 3) {
+            // 1행: 입력 대화 말풍선
+            HStack(alignment: .bottom, spacing: 6) {
+                Spacer(minLength: 60)
 
-            VStack(alignment: .trailing, spacing: 6) {
-                // 첨부 이미지 썸네일 (T-71)
-                if let attachments = message.attachments, !attachments.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(attachments) { attachment in
-                            if let image = NSImage(data: attachment.imageData) {
-                                Image(nsImage: image)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(maxWidth: 180, maxHeight: 140)
-                                    .clipShape(RoundedRectangle(cornerRadius: theme.radiusCard))
-                                    .overlay(RoundedRectangle(cornerRadius: theme.radiusCard).strokeBorder(Color.white.opacity(0.35)))
-                                    .help(attachment.fileName ?? "첨부 이미지")
+                VStack(alignment: .trailing, spacing: 6) {
+                    // 첨부 이미지 썸네일 (T-71)
+                    if let attachments = message.attachments, !attachments.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(attachments) { attachment in
+                                if attachment.mimeType.hasPrefix("audio/") {
+                                    AudioAttachmentRow(attachment: attachment)
+                                } else if let image = NSImage(data: attachment.imageData) {
+                                    Image(nsImage: image)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(maxWidth: 180, maxHeight: 140)
+                                        .clipShape(RoundedRectangle(cornerRadius: theme.radiusCard))
+                                        .overlay(RoundedRectangle(cornerRadius: theme.radiusCard).strokeBorder(Color.white.opacity(0.35)))
+                                        .help(attachment.fileName ?? "첨부 이미지")
+                                }
                             }
                         }
                     }
-                }
 
-                Text(message.content)
-                    .textSelection(.enabled)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: theme.radiusBubble)
-                            .fill(theme.userBubbleGradient)
-                    )
+                    Text(message.content)
+                        .textSelection(.enabled)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: theme.radiusBubble)
+                                .fill(theme.userBubbleGradient)
+                        )
+                }
             }
 
-            VStack(alignment: .trailing, spacing: 2) {
-                if let onFork {
-                    Button(action: onFork) {
-                        Image(systemName: "arrow.triangle.branch")
-                            .font(.system(size: 11))
-                            .contentShape(Rectangle())
+            // 2행: 보낸 시간 · 분기 · 되돌리기 (T-340)
+            HStack(spacing: 8) {
+                Spacer(minLength: 60)
+                Text(message.timestamp, style: .time)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                if onFork != nil {
+                    Button(action: { onFork?() }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.triangle.branch")
+                                .font(.system(size: 10))
+                            Text("분기")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(.tertiary)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .help("이 지점부터 분기")
                 }
-                Text(message.timestamp, style: .time)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                if canRewind, onRewind != nil {
+                    Button(action: { onRewind?() }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.uturn.backward")
+                                .font(.system(size: 10))
+                            Text("되돌리기")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(.tertiary)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("이 지점부터 되돌리기")
+                }
             }
         }
         .padding(.horizontal, sidePadding)
@@ -262,9 +295,10 @@ struct AssistantBubbleView: View {
                         .foregroundStyle(.secondary)
                         .opacity(0.8)
                     }
-
-                    followUpSection
                 }
+
+                // 후속질문 — 푸터 행 아랫줄 전체 (T-337c, 푸터 HStack 밖)
+                followUpSection
             }
 
             Spacer(minLength: 60)
@@ -297,7 +331,7 @@ struct AssistantBubbleView: View {
                     HStack(spacing: 5) {
                         Image(systemName: "text.line.first.and.arrowtriangle.forward")
                             .font(.system(size: 11))
-                        Text("Follow up")
+                        Text("후속 질문")
                             .font(.system(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(theme.secondaryText)

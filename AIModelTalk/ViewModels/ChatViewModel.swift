@@ -408,7 +408,7 @@ final class ChatViewModel: ObservableObject {
         guard let model = auxiliaryModel else { return }
         let prompt = """
         다음 대화에서 사용자가 다음에 물을 만한 후속 질문을 3개 만들어주세요.
-        규칙: 한국어, 각 40자 이내, 한 줄에 하나씩, 번호·불릿·따옴표 없이 질문 본문만 출력.
+        규칙: 반드시 한국어(존댓말)로, 각 40자 이내, 한 줄에 하나씩, 번호·불릿·따옴표 없이 질문 본문만 출력.
 
         사용자: \(String(userText.prefix(300)))
         어시스턴트: \(String(assistantText.prefix(600)))
