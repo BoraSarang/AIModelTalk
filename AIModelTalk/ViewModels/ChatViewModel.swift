@@ -1880,7 +1880,8 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - 메시지 되돌리기 (v0.3.3 T-339)
 
-    /// 지정 사용자 메시지 이후를 잘라내고 그 지점부터 다시 시작 (OpenCode 되돌리기 상당)
+    /// 지정 사용자 메시지부터 잘라내고 입력창에 담아 다시 시작 (OpenCode 되돌리기 상당, T-339b)
+    /// 선택 메시지 포함 이후 전부 삭제 + 입력창 프리필 (전송 없음 — 고쳐서 다시 전송).
     /// 분기(fork)와 달리 원본을 직접 자른다 — 파괴적이라 호출부 확인 다이얼로그 필수.
     /// 자동·미핀 기억 중 삭제 구간과 겹치는 것만 회수 (수동·핀 보호, 출처 없어 최선노력).
     /// 검색 인덱스는 saveSession이 세션 전체 재구축이라 자동 동기화.
@@ -1889,14 +1890,13 @@ final class ChatViewModel: ObservableObject {
               let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
         let source = sessions[index]
         guard let cutIndex = source.messages.firstIndex(where: { $0.id == messageID }),
-              source.messages[cutIndex].role == .user,
-              cutIndex + 1 < source.messages.count else { return }
-        let removed = Array(source.messages[(cutIndex + 1)...])
+              source.messages[cutIndex].role == .user else { return }
+        let removed = Array(source.messages[cutIndex...])
         let cutMessage = source.messages[cutIndex]
-        sessions[index].messages = Array(source.messages[...cutIndex])
+        sessions[index].messages = Array(source.messages[..<cutIndex])
         sessions[index].updatedAt = Date()
         _cachedSession = nil
-        // 잘라낸 메시지를 입력창에 넣고 전송은 안 함 — 그 자리에서 고쳐 다시 시작
+        // 잘라낸 메시지를 입력창에 담고 전송은 안 함 — 고쳐서 다시 시작
         inputText = cutMessage.content
         // 기억 회수 — 삭제 구간의 텍스트와 겹치는 자동 기억만
         let deletedText = removed.map(\.content).joined(separator: "\n")
@@ -1905,9 +1905,9 @@ final class ChatViewModel: ObservableObject {
         memoryStore.items = memoryItems
         let retractedCount = beforeCount - memoryItems.count
         saveSession(sessions[index])
-        DebugLogger.shared.info("REWIND", "[FEATURE] 되돌리기 실행됨: 메시지 \(removed.count)개 삭제, 자동 기억 \(retractedCount)건 회수 (수동·핀 보호)")
-        // 되돌린 지점으로 이동 + 하이라이트 — 그 자리에서 다시 시작
-        jumpToMessage(messageID, in: sessionID)
+        DebugLogger.shared.info("REWIND", "[FEATURE] 되돌리기 실행됨: 메시지 \(removed.count)개 삭제(선택 포함), 자동 기억 \(retractedCount)건 회수 (수동·핀 보호)")
+        // 잘라낸 자리가 맨 끝이므로 하단으로 이동 — 입력창에서 고쳐 다시 시작
+        NotificationCenter.default.post(name: .scrollToBottom, object: nil)
     }
 
     private func saveSession(_ session: ChatSession) {

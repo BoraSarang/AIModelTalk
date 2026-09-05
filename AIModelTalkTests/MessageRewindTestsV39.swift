@@ -61,7 +61,7 @@ final class MessageRewindTestsV39: XCTestCase {
         super.tearDown()
     }
 
-    /// 3교환 중 2번째 사용자 메시지부터 되돌리기 → 이후 삭제 + 겹침 기억 회수
+    /// 3교환 중 2번째 사용자 메시지부터 되돌리기 → 선택 포함 삭제 + 입력창 프리필 + 겹침 기억 회수
     @MainActor
     func testRewindTruncatesAndRetracts() {
         var session = ChatSession(title: "되돌리기 테스트")
@@ -82,20 +82,25 @@ final class MessageRewindTestsV39: XCTestCase {
         vm.rewindSession(to: u2.id, from: session.id)
 
         let kept = vm.sessions.first(where: { $0.id == session.id })!.messages
-        XCTAssertEqual(kept.map(\.id), [u1.id, a1.id, u2.id], "3번 이후 삭제, 2번까지 유지")
+        XCTAssertEqual(kept.map(\.id), [u1.id, a1.id], "2번 포함 이후 삭제, 1번까지 유지")
         XCTAssertEqual(vm.memoryItems.map(\.content), ["수동 메모 78년생"], "자동 기억만 회수")
         XCTAssertEqual(vm.inputText, "두 번째 질문", "잘라낸 메시지가 입력창에 (전송 없음)")
     }
 
-    /// 마지막 메시지 되돌리기는 no-op
+    /// 마지막 메시지 되돌리기는 자기 자신만 삭제
     @MainActor
-    func testRewindAtLastMessageIsNoOp() {
-        var session = ChatSession(title: "noop")
+    func testRewindAtLastMessageRemovesItself() {
+        var session = ChatSession(title: "last")
         let u1 = ChatMessage(role: .user, content: "질문")
-        session.messages = [u1]
+        let a1 = ChatMessage(role: .assistant, content: "답변")
+        session.messages = [u1, a1]
         vm.sessions.append(session)
+        vm.rewindSession(to: a1.id, from: session.id)
+        // 어시스턴트 기준은 거부되므로 그대로
+        XCTAssertEqual(vm.sessions.first(where: { $0.id == session.id })!.messages.count, 2)
         vm.rewindSession(to: u1.id, from: session.id)
-        XCTAssertEqual(vm.sessions.first(where: { $0.id == session.id })!.messages.count, 1)
+        XCTAssertEqual(vm.sessions.first(where: { $0.id == session.id })!.messages.count, 0, "마지막 사용자 메시지도 삭제")
+        XCTAssertEqual(vm.inputText, "질문")
     }
 
     /// 어시스턴트 메시지 기준 되돌리기는 거부

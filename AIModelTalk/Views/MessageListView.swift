@@ -220,7 +220,6 @@ struct MessageListView: View {
                 ForEach(viewModel.currentSession?.messages ?? []) { message in
                     let canRewindMessage = message.role == .user
                         && viewModel.streamingMessageID != message.id
-                        && (viewModel.currentSession?.messages.last?.id != message.id)
                     MessageBubbleView(message: message, isStreaming: viewModel.streamingMessageID == message.id, onFork: {
                         if let sessionID = viewModel.currentSessionID {
                             viewModel.forkSession(at: message.id, from: sessionID)
@@ -253,9 +252,7 @@ struct MessageListView: View {
                                 } label: {
                                     Label("이 지점에서 재실행 (현재 모델)", systemImage: "arrow.counterclockwise")
                                 }
-                                if message.role == .user,
-                                   let messages = viewModel.currentSession?.messages,
-                                   messages.last?.id != message.id {
+                                if message.role == .user {
                                     Divider()
                                     Button(role: .destructive) {
                                         pendingRewindMessageID = message.id
@@ -388,15 +385,15 @@ struct MessageListView: View {
 
     // MARK: - 검색 결과 메시지 점프 (v2.1 T-97 고도화)
 
-    /// 되돌리기 확인 문구 (T-339) — 삭제될 메시지 수 + 기억 회수 안내
+    /// 되돌리기 확인 문구 (T-339) — 선택 메시지 포함 삭제 수 + 기억 회수 안내
     private var rewindConfirmText: String {
         guard let id = pendingRewindMessageID,
               let messages = viewModel.currentSession?.messages,
               let cutIndex = messages.firstIndex(where: { $0.id == id }) else {
-            return "이 지점 이후의 대화가 삭제됩니다."
+            return "이 지점부터 대화가 삭제됩니다."
         }
-        let count = messages.count - (cutIndex + 1)
-        return "이후 \(count)개 메시지가 삭제되고, 겹치는 자동 기억도 함께 회수됩니다. (수동·핀 기억은 보호)\n되돌린 지점부터 다시 시작합니다."
+        let count = messages.count - cutIndex
+        return "이 메시지 포함 \(count)개 메시지가 삭제되고 입력창에 담깁니다. 겹치는 자동 기억도 함께 회수됩니다. (수동·핀 기억은 보호)"
     }
 
     /// 점프 시작 — WKWebView 비동기 높이 수렴을 고려해 수렴형 보정 점프를 예약한다 (v1.3 패턴 재사용)
