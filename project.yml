@@ -8,12 +8,18 @@ options:
     - en
     - ko
     - Base
+packages:
+  Splash:
+    url: https://github.com/JohnSundell/Splash
+    majorVersion: 0.16.0
 targets:
   AIModelTalk:
     type: application
     platform: macOS
     sources:
       - AIModelTalk
+    dependencies:
+      - package: Splash
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.borasarang.AIModelTalk

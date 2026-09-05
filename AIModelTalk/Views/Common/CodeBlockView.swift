@@ -1,4 +1,5 @@
 import SwiftUI
+import Splash
 
 // MARK: - CodeBlockView (간단 하이라이트 + 복사 버튼)
 
@@ -69,7 +70,55 @@ struct CodeBlockView: View {
     }
 }
 
-// MARK: - HighlightedCodeText (간단 정규식 기반 하이라이트)
+// MARK: - HighlightedCodeText (Swift=Splash, 타언어=정규식) (T-320)
+
+/// 하이라이트 엔진 선택 — 순수 함수 (테스트 가능)
+enum CodeHighlightEngine {
+    case splash
+    case regex
+}
+
+struct CodeHighlightProvider {
+    /// Splash 문법은 Swift 전용이라 Swift만 Splash, 나머지는 정규식 유지
+    static func engine(for language: String) -> CodeHighlightEngine {
+        language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "swift" ? .splash : .regex
+    }
+}
+
+/// 앱 테마 → Splash 테마 매핑 (Splash 0.16 AppKit 기반)
+struct AppSplashTheme {
+    static func make(codeSize: CGFloat) -> Splash.Theme {
+        func c(_ hex: String) -> NSColor { NSColor(hexString: hex) ?? .textColor }
+        return Splash.Theme(
+            font: Splash.Font(size: Double(codeSize)),
+            plainTextColor: .textColor,
+            tokenColors: [
+                .keyword: c("e06c75"),
+                .string: c("98c379"),
+                .type: c("e5c07b"),
+                .number: c("d19a66"),
+                .comment: .tertiaryLabelColor,
+                .call: c("61afef"),
+                .property: c("61afef"),
+                .dotAccess: c("61afef"),
+                .preprocessing: c("e5c07b"),
+            ],
+            backgroundColor: .clear
+        )
+    }
+}
+
+private extension NSColor {
+    convenience init?(hexString: String) {
+        var hex = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if hex.hasPrefix("#") { hex.removeFirst() }
+        guard hex.count == 6, let rgb = UInt32(hex, radix: 16) else { return nil }
+        let r = CGFloat((rgb >> 16) & 0xFF) / 255.0
+        let g = CGFloat((rgb >> 8) & 0xFF) / 255.0
+        let b = CGFloat(rgb & 0xFF) / 255.0
+        self.init(calibratedRed: r, green: g, blue: b, alpha: 1.0)
+    }
+}
 
 struct HighlightedCodeText: View {
     let code: String
@@ -77,9 +126,17 @@ struct HighlightedCodeText: View {
     let theme: any ThemeProtocol
 
     var body: some View {
-        // 언어별 키워드 하이라이트
-        let highlighted = highlightCode(code, language: language)
         Text(highlighted)
+    }
+
+    private var highlighted: AttributedString {
+        if CodeHighlightProvider.engine(for: language) == .splash {
+            let format = AttributedStringOutputFormat(theme: AppSplashTheme.make(codeSize: theme.codeSize))
+            let highlighter = SyntaxHighlighter(format: format)
+            let nsResult: NSAttributedString = highlighter.highlight(code)
+            return AttributedString(nsResult)
+        }
+        return highlightCode(code, language: language)
     }
 
     private func highlightCode(_ code: String, language: String) -> AttributedString {

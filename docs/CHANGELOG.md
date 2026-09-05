@@ -35,6 +35,10 @@
 - **갱신 경로**: `refreshToken`이 커스텀 토큰 엔드포인트 우선 사용 (수동 연결 갱신 실패 해소)
 - **연결 기록**: 수동 연결 시 `authMode=.oauth21Manual`, 자동 시 `.oauth21DCR` 명시 저장
 
+### T-320 코드 블록 Splash 연동
+- **Splash 0.16.0 SPM 해결** (이전 xcodegen 실패 해소) + `CodeBlockView`의 Swift 경로를 Splash `AttributedString` 하이라이트로 교체 — 타언어(python/js 등)는 기존 정규식 유지 (Splash 문법이 Swift 전용)
+- **AppSplashTheme**: 기존 One-Dark 계열 hex 팔레트 매핑, 평문은 시맨틱 컬러로 다크/라이트 대응
+
 ## [0.3.2] — 2026-09-05 (토큰 상태 표시)
 
 > 비용(USD) 추정 제거 — "실제 토큰 상황만" 표시: 채팅 하단 남음 배지·팝오버 + 설정 토큰 상태 탭

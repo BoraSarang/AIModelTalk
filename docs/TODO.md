@@ -27,7 +27,7 @@ v0.3.2 "토큰 상태 표시" (v0.2.6~0.3.1 완료). 상세: `docs/plans/PLAN_v0
 ## 백로그
 
 - [ ] T-328 GitLab·Notion·Slack 등 DCR 미지원 공급자도 수동(manual) 전환 + 사용자 정의 OAuth 엔드포인트 입력
-- [ ] T-320 코드 블록 Splash SPM 연동 (선택 — regex 폴백 사용 중)
+- [x] T-320 코드 블록 Splash SPM 연동 — Splash 0.16.0 해결·Swift만 Splash(타언어 regex 유지)·AppSplashTheme 매핑 (2026-09-05)
 - [ ] T-* 크레딧 충전/잔액 백엔드 연동 (백엔드 준비 시)
 
 ## 완료 (v0.3.1)
