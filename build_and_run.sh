@@ -47,14 +47,34 @@ info "2/4: xcodebuild ${MODE}..."
 CONFIG="Debug"
 [ "$MODE" = "release" ] && CONFIG="Release"
 
-xcodebuild \
-  -project "${APP_NAME}.xcodeproj" \
-  -scheme "${APP_NAME}" \
-  -configuration "${CONFIG}" \
-  -derivedDataPath "${BUILD_DIR}" \
-  CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO \
-  build 2>&1 | tail -20
+BASE_ARGS=(-project "${APP_NAME}.xcodeproj" -scheme "${APP_NAME}" -configuration "${CONFIG}" -derivedDataPath "${BUILD_DIR}")
 
+# 서명: 개발 인증서가 있으면 TCC(접근성/화면캡처) 허용이 재빌드 시 유지되도록 우선 사용.
+# macOS 개발 서명은 프로비저닝 프로파일이 필요하며, 없으면 실패하므로 ad-hoc으로 폴백한다.
+DEV_TEAM=""
+DEV_TEAM=$(security find-identity -v -p codesigning 2>/dev/null \
+  | grep -oE '\([A-Z0-9]{10}\)' | head -1 | tr -d '()' || true)
+
+if [ -n "$DEV_TEAM" ]; then
+  info "개발 인증서 서명 시도 (Team: ${DEV_TEAM})..."
+  if xcodebuild "${BASE_ARGS[@]}" \
+       CODE_SIGN_IDENTITY="Apple Development" DEVELOPMENT_TEAM="${DEV_TEAM}" CODE_SIGNING_REQUIRED=YES \
+       build > /tmp/amt_sign_build.log 2>&1; then
+    info "개발 인증서 서명 성공"
+  else
+    warn "자동 서명 실패(프로비저닝 프로파일 없음) → ad-hoc 폴백"
+    xcodebuild "${BASE_ARGS[@]}" \
+      CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO \
+      build 2>&1 | tail -20
+  fi
+else
+  warn "개발 인증서 없음 → ad-hoc 폴백"
+  xcodebuild "${BASE_ARGS[@]}" \
+    CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO \
+    build 2>&1 | tail -20
+fi
+
+# set -e 하에서 xcodebuild 실패를 명시 처리
 APP_PATH="${BUILD_DIR}/Build/Products/${CONFIG}/${APP_NAME}.app"
 [ -d "$APP_PATH" ] || error "빌드 실패: ${APP_PATH} 없음"
 info "빌드 성공"
