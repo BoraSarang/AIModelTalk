@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProvidersSettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
+    @Environment(\.theme) private var theme
     @State private var ollamaBaseURL: String = ""
     @State private var ollamaIsTesting = false
     @State private var ollamaTestResult: String?
@@ -13,118 +14,105 @@ struct ProvidersSettingsView: View {
     @State private var showCustomEditor = false
 
     var body: some View {
-        Form {
-            // 1. Apple Intelligence (macOS 26+ 내장) - 최상단
-            Section {
-                HStack {
-                    Circle()
-                        .fill(Color.indigo)
-                        .frame(width: 8, height: 8)
-                    VStack(alignment: .leading) {
-                        Text("Apple Intelligence")
-                            .fontWeight(.medium)
-                        Text("macOS 26+ 내장")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if #available(macOS 26.0, *) {
-                        Text("사용 가능")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                    } else {
-                        Text("macOS 26 필요")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 2)
-            } header: {
-                Text("모델 공급자")
-            }
-
-            // 2. Ollama (로컬, 설치 필요)
-            Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    TextField("서버 URL (예: http://localhost:11434)", text: $ollamaBaseURL)
-                        .textFieldStyle(.roundedBorder)
-                        .onAppear {
-                            ollamaBaseURL = settings.ollamaBaseURL
+        ScrollView {
+            VStack(alignment: .leading, spacing: theme.space12) {
+                ThemedSettingsCard("모델 공급자") {
+                    HStack(spacing: theme.space10) {
+                        Circle()
+                            .fill(Color.indigo)
+                            .frame(width: 8, height: 8)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Apple Intelligence")
+                                .font(.callout.weight(.medium))
+                                .foregroundStyle(theme.primaryText)
+                            ThemedSettingsCaption("macOS 26+ 내장")
                         }
-                    HStack {
-                        Text("로컬 Ollama 서버가 실행 중이어야 합니다. (ollama serve)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                         Spacer()
-                        if ollamaIsTesting {
-                            ProgressView().controlSize(.small)
-                        } else if let result = ollamaTestResult {
-                            Text(result)
+                        if #available(macOS 26.0, *) {
+                            Text("사용 가능")
                                 .font(.caption)
-                                .foregroundStyle(result.hasPrefix("✓") ? .green : .red)
+                                .foregroundStyle(theme.successColor)
+                        } else {
+                            ThemedSettingsCaption("macOS 26 필요")
                         }
-                        Button("연결 테스트") {
-                            Task { await testOllama() }
-                        }
-                        .disabled(ollamaBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || ollamaIsTesting)
                     }
                 }
-                .padding(.vertical, 4)
-                .onChange(of: ollamaBaseURL) { _, newValue in
-                    var url = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !url.hasPrefix("http://") && !url.hasPrefix("https://") {
-                        url = "http://" + url
-                    }
-                    if url.hasSuffix("/") { url = String(url.dropLast()) }
-                    settings.ollamaBaseURL = url
-                }
-            } header: {
-                Text("Ollama (로컬, 설치 필요)")
-            }
 
-            // 3. 커스텀 (OpenAI 호환) — 다중 엔드포인트 (v1.9 T-84)
-            Section {
-                if customEndpoints.isEmpty {
-                    Text("등록된 엔드포인트가 없습니다. LM Studio, vLLM, OpenAI 공식 API 등을 추가하세요.")
+                ThemedSettingsCard("Ollama (로컬, 설치 필요)") { ollamaSection }
+
+                ThemedSettingsCard("커스텀 (OpenAI 호환)") { customSection }
+
+                ThemedSettingsCard("API 키 필요 공급자") {
+                    ForEach(Provider.allCases.filter { $0.requiresAPIKey && $0 != .custom }) { provider in
+                        ProviderRow(provider: provider)
+                    }
+                }
+            }
+            .padding(theme.space16)
+        }
+    }
+
+    private var ollamaSection: some View {
+        VStack(alignment: .leading, spacing: theme.space10) {
+            TextField("서버 URL (예: http://localhost:11434)", text: $ollamaBaseURL)
+                .textFieldStyle(.roundedBorder)
+                .onAppear {
+                    ollamaBaseURL = settings.ollamaBaseURL
+                }
+            HStack {
+                ThemedSettingsCaption("로컬 Ollama 서버가 실행 중이어야 합니다. (ollama serve)")
+                Spacer()
+                if ollamaIsTesting {
+                    ProgressView().controlSize(.small)
+                } else if let result = ollamaTestResult {
+                    Text(result)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(result.hasPrefix("✓") ? theme.successColor : theme.errorColor)
                 }
-                ForEach(customEndpoints) { endpoint in
-                    customEndpointRow(endpoint)
+                Button("연결 테스트") {
+                    Task { await testOllama() }
                 }
-
-                Button {
-                    editingEndpoint = nil
-                    showCustomEditor = true
-                } label: {
-                    Label("엔드포인트 추가", systemImage: "plus.circle.fill")
-                }
-                .buttonStyle(.plain)
-            } header: {
-                Text("커스텀 (OpenAI 호환)")
-            }
-            .onAppear { reloadCustomEndpoints() }
-            .sheet(isPresented: $showCustomEditor) {
-                CustomEndpointEditorView(endpoint: editingEndpoint) { result in
-                    var store = CustomEndpointStore(defaults: .standard)
-                    store.upsert(result)
-                    reloadCustomEndpoints()
-                    DebugLogger.shared.info("APP", "[FEATURE] 커스텀 엔드포인트 저장 실행됨: '\(result.name)' (\(result.baseURL))")
-                }
-                .frame(minWidth: 420, minHeight: 380)
-            }
-
-            // 4. API 키 필요 공급자들 (커스텀은 위 전용 섹션에서 처리 — T-84)
-            Section {
-                ForEach(Provider.allCases.filter { $0.requiresAPIKey && $0 != .custom }) { provider in
-                    ProviderRow(provider: provider)
-                }
-            } header: {
-                Text("API 키 필요 공급자")
+                .disabled(ollamaBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || ollamaIsTesting)
             }
         }
-        .formStyle(.grouped)
-        .padding()
+        .onChange(of: ollamaBaseURL) { _, newValue in
+            var url = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !url.hasPrefix("http://") && !url.hasPrefix("https://") {
+                url = "http://" + url
+            }
+            if url.hasSuffix("/") { url = String(url.dropLast()) }
+            settings.ollamaBaseURL = url
+        }
+    }
+
+    @ViewBuilder
+    private var customSection: some View {
+        VStack(alignment: .leading, spacing: theme.space10) {
+            if customEndpoints.isEmpty {
+                ThemedSettingsCaption("등록된 엔드포인트가 없습니다. LM Studio, vLLM, OpenAI 공식 API 등을 추가하세요.")
+            }
+            ForEach(customEndpoints) { endpoint in
+                customEndpointRow(endpoint)
+            }
+
+            Button {
+                editingEndpoint = nil
+                showCustomEditor = true
+            } label: {
+                Label("엔드포인트 추가", systemImage: "plus.circle.fill")
+            }
+            .buttonStyle(.plain)
+        }
+        .onAppear { reloadCustomEndpoints() }
+        .sheet(isPresented: $showCustomEditor) {
+            CustomEndpointEditorView(endpoint: editingEndpoint) { result in
+                var store = CustomEndpointStore(defaults: .standard)
+                store.upsert(result)
+                reloadCustomEndpoints()
+                DebugLogger.shared.info("APP", "[FEATURE] 커스텀 엔드포인트 저장 실행됨: '\(result.name)' (\(result.baseURL))")
+            }
+            .frame(minWidth: 420, minHeight: 380)
+        }
     }
 
     private func reloadCustomEndpoints() {
@@ -175,7 +163,7 @@ struct ProvidersSettingsView: View {
             } else if let result = customTestResults[endpoint.id] {
                 Text(result)
                     .font(.caption)
-                    .foregroundStyle(result.hasPrefix("✓") ? .green : .red)
+                    .foregroundStyle(result.hasPrefix("✓") ? theme.successColor : theme.errorColor)
             }
             Button("테스트") {
                 Task { await testCustomEndpoint(endpoint) }

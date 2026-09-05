@@ -349,14 +349,22 @@ final class AppSettings: ObservableObject {
     }
 
     func applyAppearance() {
+        let resolved: NSAppearance?
         switch appearance {
         case "dark":
-            NSApp.appearance = NSAppearance(named: .darkAqua)
+            resolved = NSAppearance(named: .darkAqua)
         case "light":
-            NSApp.appearance = NSAppearance(named: .aqua)
+            resolved = NSAppearance(named: .aqua)
         default:
-            NSApp.appearance = nil
+            resolved = nil
         }
+        NSApp.appearance = resolved
+        // 기존에 떠 있는 모든 창에 즉시 반영 — 네이티브 툴바/타이틀바가 라이트로 잔존하는 문제 방지 (v0.3.1)
+        // window.appearance를 명시하면 NSApp.appearance 추종 캐시에 의존하지 않고 외형이 강제된다.
+        for window in NSApp.windows {
+            window.appearance = resolved
+        }
+        DebugLogger.shared.info("THEME", "[FEATURE] 외형 적용: \(appearance) (창 \(NSApp.windows.count)개 반영)")
     }
 
     /// Dock 아이콘 표시 정책 적용 (v3.5 T-163) — 런타임 전환

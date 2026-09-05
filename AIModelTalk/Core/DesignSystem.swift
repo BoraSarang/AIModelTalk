@@ -106,4 +106,19 @@ extension View {
             .background(color.opacity(0.15))
             .clipShape(Capsule())
     }
+
+    /// 가로 라디오 선택 칩 배경 — 선택 시 액센트 채움 + 테두리 (설정 '외관/액센트' 가로 선택)
+    func radioChipBackground(isSelected: Bool, theme: ThemeBox) -> some View {
+        background(
+            RoundedRectangle(cornerRadius: theme.inputCornerRadius, style: .continuous)
+                .fill(isSelected ? theme.accentColor.opacity(0.12) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: theme.inputCornerRadius, style: .continuous)
+                .strokeBorder(
+                    isSelected ? theme.accentColor.opacity(0.5) : theme.cardBorder.opacity(theme.borderOpacity),
+                    lineWidth: 1
+                )
+        )
+    }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 /// 전역 메모리 관리 화면 (T-208) — 목록 · 검색 · 핀 · 듀레이션 · 삭제 · 수동 추가
 struct MemorySettingsView: View {
     @ObservedObject private var viewModel = ChatViewModel.shared
+    @Environment(\.theme) private var theme
     @State private var query = ""
     @State private var newMemory = ""
 
@@ -19,49 +20,62 @@ struct MemorySettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            header
-            HStack(spacing: 8) {
-                TextField("새 기억 추가", text: $newMemory)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(addNew)
-                Button("추가", action: addNew)
-                    .disabled(newMemory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .keyboardShortcut(.defaultAction)
-            }
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("검색", text: $query)
-                    .textFieldStyle(.roundedBorder)
-                Spacer()
-                Text("\(filtered.count) / \(viewModel.memoryItems.count)")
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
-            Divider()
-            if filtered.isEmpty {
-                ContentUnavailableView("기억이 없습니다",
-                    systemImage: "brain",
-                    description: Text("대화 중 중요한 정보를 자동으로 기억하거나, 위에서 직접 추가할 수 있습니다."))
-            } else {
-                List(filtered) { item in
-                    MemoryRowView(item: item, viewModel: viewModel)
+        ScrollView {
+            VStack(alignment: .leading, spacing: theme.space12) {
+                ThemedSettingsCard {
+                    VStack(alignment: .leading, spacing: theme.space10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("전역 메모리")
+                                .font(.headline)
+                                .foregroundStyle(theme.primaryText)
+                            ThemedSettingsCaption("모든 대화의 시스템 프롬프트에 주입되어 연속성을 만듭니다. 핀은 퇴출을 보호하고, 임시는 정리 우선 대상입니다.")
+                        }
+                        HStack(spacing: 8) {
+                            TextField("새 기억 추가", text: $newMemory)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit(addNew)
+                            Button("추가", action: addNew)
+                                .disabled(newMemory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                .keyboardShortcut(.defaultAction)
+                        }
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundStyle(theme.secondaryText)
+                            TextField("검색", text: $query)
+                                .textFieldStyle(.roundedBorder)
+                            Spacer()
+                            Text("\(filtered.count) / \(viewModel.memoryItems.count)")
+                                .font(.caption2)
+                                .foregroundStyle(theme.secondaryText)
+                        }
+                    }
                 }
-                .listStyle(.inset)
-            }
-        }
-        .padding(16)
-        .navigationTitle("메모리")
-        .onAppear { viewModel.loadMemory() }
-    }
 
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text("전역 메모리").font(.headline)
-                Text("모든 대화의 시스템 프롬프트에 주입되어 연속성을 만듭니다. 핀은 퇴출을 보호하고, 임시는 정리 우선 대상입니다.")
-                    .font(.caption).foregroundStyle(.secondary)
+                if filtered.isEmpty {
+                    ContentUnavailableView("기억이 없습니다",
+                        systemImage: "brain",
+                        description: Text("대화 중 중요한 정보를 자동으로 기억하거나, 위에서 직접 추가할 수 있습니다."))
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(filtered) { item in
+                            MemoryRowView(item: item, viewModel: viewModel)
+                            if item.id != filtered.last?.id {
+                                Divider()
+                                    .overlay(theme.cardBorder.opacity(theme.borderOpacity))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, theme.space12)
+                    .padding(.vertical, theme.space4)
+                    .background(theme.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: theme.cardCornerRadius, style: .continuous)
+                            .stroke(theme.cardBorder.opacity(theme.borderOpacity), lineWidth: theme.defaultBorderWidth)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: theme.cardCornerRadius, style: .continuous))
+                }
             }
-            Spacer()
+            .padding(theme.space16)
         }
     }
 
@@ -77,20 +91,22 @@ struct MemorySettingsView: View {
 private struct MemoryRowView: View {
     let item: MemoryItem
     let viewModel: ChatViewModel
+    @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: theme.space10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.content)
                     .font(.body)
+                    .foregroundStyle(theme.primaryText)
                 HStack(spacing: 10) {
                     Label(item.createdAt.formatted(date: .abbreviated, time: .shortened),
-                          systemImage: "calendar").font(.caption2).foregroundStyle(.secondary)
+                          systemImage: "calendar").font(.caption2).foregroundStyle(theme.secondaryText)
                     if item.isAuto {
-                        Text("자동").font(.caption2).foregroundStyle(.secondary)
+                        Text("자동").font(.caption2).foregroundStyle(theme.secondaryText)
                     }
                     if !item.tags.isEmpty {
-                        Text(item.tags.joined(separator: ", ")).font(.caption2).foregroundStyle(.secondary)
+                        Text(item.tags.joined(separator: ", ")).font(.caption2).foregroundStyle(theme.secondaryText)
                     }
                 }
             }
@@ -99,7 +115,7 @@ private struct MemoryRowView: View {
                 viewModel.toggleMemoryPin(memoryID: item.id)
             } label: {
                 Image(systemName: item.isPinned ? "pin.fill" : "pin")
-                    .foregroundStyle(item.isPinned ? .orange : .secondary)
+                    .foregroundStyle(item.isPinned ? Color.orange : theme.secondaryText)
             }
             .help(item.isPinned ? "고정 해제 (퇴출 보호)" : "고정 (퇴출 보호)")
             .buttonStyle(.plain)
@@ -113,7 +129,7 @@ private struct MemoryRowView: View {
                 }
             } label: {
                 Image(systemName: item.durability == .permanent ? "infinity" : "clock")
-                    .foregroundStyle(item.durability == .permanent ? .teal : .secondary)
+                    .foregroundStyle(item.durability == .permanent ? Color.teal : theme.secondaryText)
             }
             .help(item.durability == .permanent ? "영구 기억" : "임시 기억")
             .buttonStyle(.plain)
@@ -121,12 +137,12 @@ private struct MemoryRowView: View {
             Button(role: .destructive) {
                 viewModel.deleteMemory(memoryID: item.id)
             } label: {
-                Image(systemName: "trash").foregroundStyle(.secondary)
+                Image(systemName: "trash").foregroundStyle(theme.secondaryText)
             }
             .help("삭제")
             .buttonStyle(.plain)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, theme.space4)
     }
 }
 

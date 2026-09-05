@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HotkeySettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
+    @Environment(\.theme) private var theme
 
     private let modifierOptions: [(String, String)] = [
         ("Control", "control"),
@@ -12,58 +13,70 @@ struct HotkeySettingsView: View {
     ]
 
     var body: some View {
-        Form {
-            Section("런처") {
-                Label("⌥Space — 퀵 패널 토글", systemImage: "command.square.fill")
-                    .font(.callout.weight(.medium))
-                Text("어디서든 퀵 패널을 엽니다. 다른 앱과 충돌해 등록되지 않으면 디버그 패널(HOTKEY 태그)에 기록됩니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("글로벌 단축키") {
-                Picker("수정자", selection: $settings.hotkeyModifiers) {
-                    ForEach(modifierOptions, id: \.1) { label, value in
-                        Text(label).tag(value)
+        ScrollView {
+            VStack(alignment: .leading, spacing: theme.space12) {
+                ThemedSettingsCard("런처") {
+                    VStack(alignment: .leading, spacing: theme.space8) {
+                        Label("⌥Space — 퀵 패널 토글", systemImage: "command.square.fill")
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(theme.primaryText)
+                        ThemedSettingsCaption("어디서든 퀵 패널을 엽니다. 다른 앱과 충돌해 등록되지 않으면 디버그 패널(HOTKEY 태그)에 기록됩니다.")
                     }
                 }
-                .pickerStyle(.menu)
 
-                Picker("키", selection: $settings.hotkeyKey) {
-                    Text("Space").tag("space")
-                    Text("S").tag("s")
-                    Text("T").tag("t")
-                    Text("Q").tag("q")
-                    Text("I").tag("i")
-                }
-                .pickerStyle(.menu)
-
-                Text("현재 설정: \(displayString)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("두 번째 단축키") {
-                Picker("수정자", selection: $settings.hotkeyModifiers2) {
-                    ForEach(modifierOptions, id: \.1) { label, value in
-                        Text(label).tag(value)
+                ThemedSettingsCard("글로벌 단축키") {
+                    VStack(alignment: .leading, spacing: theme.space10) {
+                        ThemedSettingsRow("수정자") {
+                            Picker("", selection: $settings.hotkeyModifiers) {
+                                ForEach(modifierOptions, id: \.1) { label, value in
+                                    Text(label).tag(value)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
+                        ThemedSettingsRow("키") {
+                            Picker("", selection: $settings.hotkeyKey) {
+                                Text("Space").tag("space")
+                                Text("S").tag("s")
+                                Text("T").tag("t")
+                                Text("Q").tag("q")
+                                Text("I").tag("i")
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
+                        ThemedSettingsCaption("현재 설정: \(displayString)")
                     }
                 }
-                .pickerStyle(.menu)
 
-                Picker("키", selection: $settings.hotkeyKey2) {
-                    Text("Space").tag("space")
-                    Text("S").tag("s")
-                    Text("T").tag("t")
-                    Text("Q").tag("q")
-                    Text("I").tag("i")
+                ThemedSettingsCard("두 번째 단축키") {
+                    VStack(alignment: .leading, spacing: theme.space10) {
+                        ThemedSettingsRow("수정자") {
+                            Picker("", selection: $settings.hotkeyModifiers2) {
+                                ForEach(modifierOptions, id: \.1) { label, value in
+                                    Text(label).tag(value)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
+                        ThemedSettingsRow("키") {
+                            Picker("", selection: $settings.hotkeyKey2) {
+                                Text("Space").tag("space")
+                                Text("S").tag("s")
+                                Text("T").tag("t")
+                                Text("Q").tag("q")
+                                Text("I").tag("i")
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
+                    }
                 }
-                .pickerStyle(.menu)
             }
+            .padding(theme.space16)
         }
-        .formStyle(.grouped)
-        .padding()
-
     }
 
     private var displayString: String {

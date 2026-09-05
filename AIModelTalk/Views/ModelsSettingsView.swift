@@ -186,7 +186,7 @@ struct ModelsSettingsView: View {
                     reloadEndpoints()
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 100)
+                .padding(theme.space16)
 
     }
 

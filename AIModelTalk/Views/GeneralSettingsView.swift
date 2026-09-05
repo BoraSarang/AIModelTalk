@@ -5,212 +5,24 @@ struct GeneralSettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var updateService = UpdateCheckService.shared
     @State private var axGranted = SelectedTextCapture.isAccessibilityGranted
-    @State private var themeManager = ThemeManager.shared
+    @Environment(\.theme) private var theme
 
     var body: some View {
-        Form {
-            Section("외관") {
-                Picker("모드", selection: $settings.appearance) {
-                    Text("시스템 설정").tag("system")
-                    Text("다크 모드").tag("dark")
-                    Text("라이트 모드").tag("light")
-                }
-                .pickerStyle(.radioGroup)
-                .onChange(of: settings.appearance) { _, _ in
-                    DebugLogger.shared.info("THEME", "[FEATURE] 외형 모드 변경 → 테마 동기화: \(settings.appearance)")
-                }
-
-                Picker("액센트", selection: $settings.accentColor) {
-                    ForEach(AccentTheme.allCases) { theme in
-                        HStack(spacing: 6) {
-                            if let color = theme.color {
-                                Circle().fill(color).frame(width: 10, height: 10)
-                            } else {
-                                Image(systemName: "circle.lefthalf.filled").font(.caption2)
-                            }
-                            Text(theme.displayName)
-                        }.tag(theme.rawValue)
-                    }
-                }
-                .pickerStyle(.radioGroup)
-
-                // 커스텀 테마 선택 (v0.2.6 축1a) — 설치된 커스텀 테마 즉시 적용
-                if !themeManager.installedThemes.isEmpty {
-                    Picker("커스텀 테마", selection: customThemeBinding) {
-                        Text("없음 (라이트/다크 따름)").tag(CustomTheme?.none)
-                        ForEach(themeManager.installedThemes) { theme in
-                            Text(theme.name).tag(CustomTheme?.some(theme))
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    Text("커스텀 테마는 설정 고급에서 관리합니다. 선택 즉시 전체 창에 반영됩니다.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                accentPreviewCard
-
-                HStack {
-                    Button("온보딩 다시 보기") {
-                        UserDefaults.standard.set(false, forKey: "onboardingCompleted")
-                        NotificationCenter.default.post(name: HotKeyManager.showOnboardingAgain, object: nil)
-                        DebugLogger.shared.info("APP", "[FEATURE] 온보딩 재실행 요청됨")
-                    }
-                    Spacer()
-                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: theme.space12) {
+                settingsCard("외관") { appearanceSection }
+                settingsCard("접근성 권한") { accessibilitySection }
+                settingsCard("업데이트") { updateSection }
+                settingsCard("비교 모드") { comparisonSection }
+                settingsCard("보조 모델 — 기억 추출·제목 생성 (v2.3)") { auxiliarySection }
+                settingsCard("웹 검색 (Tavily)") { webSearchSection }
+                settingsCard("에이전트 (내장 도구)") { agentSection }
+                settingsCard("워크스페이스 폴더 (로컬 파일 도구)") { workspaceSection }
+                settingsCard("기본 시스템 프롬프트") { systemPromptSection }
+                settingsCard("호출 동작") { presentationSection }
             }
-
-            Section("글로벌 단축키 — 선택 텍스트 캡처") {
-                HStack {
-                    Image(systemName: axGranted ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(axGranted ? .green : .orange)
-                    Text(axGranted ? "접근성 권한 허용됨" : "접근성 권한이 필요합니다 (선택 텍스트 가져오기)")
-                        .font(.callout)
-                    Spacer()
-                    if !axGranted {
-                        Button("시스템 설정 열기") {
-                            SelectedTextCapture.openAccessibilitySettings()
-                        }
-                    }
-                }
-                Text("권한 허용 후 AIModelTalk를 다시 실행하면 자동 감지됩니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("업데이트") {
-                HStack {
-                    Text("현재 버전")
-                        .font(.callout)
-                    Spacer()
-                    Text(updateService.currentVersion)
-                        .font(.callout.monospaced())
-                        .foregroundStyle(.secondary)
-                }
-                HStack {
-                    if updateService.isChecking {
-                        ProgressView().controlSize(.small)
-                        Text("확인 중…").font(.caption)
-                    } else if updateService.hasUpdate, let release = updateService.latestRelease {
-                        Text("새 버전 \(release.version) 사용 가능")
-                            .font(.callout)
-                            .foregroundStyle(Color.accentColor)
-                        Spacer()
-                        Button("다운로드") { updateService.openReleasePage() }
-                    } else if let error = updateService.errorMessage {
-                        Text(error).font(.caption).foregroundStyle(.red)
-                        Spacer()
-                        Button("다시 시도") { Task { await updateService.checkForUpdates() } }
-                    } else {
-                        Text("최신 버전입니다").font(.callout).foregroundStyle(.green)
-                        Spacer()
-                    }
-                    Button("지금 확인") {
-                        Task { await updateService.checkForUpdates() }
-                    }
-                    .disabled(updateService.isChecking)
-                }
-                Text("업데이트는 GitHub Releases에서 수동으로 내려받습니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("비교 모드") {
-                Toggle("판정 채점·리포트 사용", isOn: $settings.showJudgeSummary)
-                Text("비교 모드에서만 적용됩니다. 일반 대화에는 영향이 없습니다. OFF면 실측 속도 메트릭만 표시됩니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("보조 모델 — 기억 추출·제목 생성 (v2.3)") {
-                Picker("보조 모델", selection: $settings.auxiliaryModelSpec) {
-                    Text("자동 (권장)").tag("")
-                    ForEach(auxiliaryChoices, id: \.spec) { choice in
-                        Text(choice.label).tag(choice.spec)
-                    }
-                }
-                .pickerStyle(.menu)
-                Text("백그라운드 작업(자동 기억 추출, 세션 제목 생성)에 경량 모델을 써서 대화 모델 토큰을 절약합니다. 자동이면 flash·mini 계열을 우선 선택하고, 없으면 대화 모델을 사용합니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("웹 검색 (Tavily)") {
-                Toggle("웹 검색 버튼 표시", isOn: $settings.webSearchEnabled)
-                if settings.webSearchEnabled {
-                    SecureField("Tavily API 키", text: $settings.tavilyAPIKey, prompt: Text("tvly-..."))
-                        .textFieldStyle(.roundedBorder)
-                    HStack {
-                        Text("무료 1,000회/월. 키는 이 Mac에만 저장됩니다.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if let url = WebSearchBackend.tavily.signupURL.flatMap(URL.init(string:)) {
-                            Link("API 키 발급", destination: url)
-                                .font(.caption)
-                        }
-                    }
-                    Text("입력창의 🌐 버튼으로 이번 전송에만 웹 검색 결과를 반영할 수 있습니다.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("에이전트 (내장 도구)") {
-                Toggle("에이전트 모드", isOn: $settings.agentMode)
-                Text("켜면 웹 검색·페이지 읽기·계산기 내장 도구를 자동 활성화해 에이전트처럼 동작합니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Toggle("YOLO 모드", isOn: $settings.yoloMode)
-                Text("켜면 모든 도구 실행을 사전 확인 없이 자동 승인합니다. 주의해서 사용하세요.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("워크스페이스 폴더 (로컬 파일 도구)") {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(settings.workspaceFolder == nil
-                             ? "지정 안 됨 — 파일 도구(list_dir/read_file/write_file/edit_file) 비활성"
-                             : "\(urlForWorkspace.lastPathComponent) (\(settings.workspaceFolder!))")
-                            .foregroundStyle(settings.workspaceFolder == nil ? .secondary : .primary)
-                        if settings.workspaceFolder != nil {
-                            Text("모델이 이 폴더 안에서만 파일을 읽고 쓸 수 있습니다.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    Button(settings.workspaceFolder == nil ? "폴더 선택…" : "변경…") { pickWorkspaceFolder() }
-                    if settings.workspaceFolder != nil {
-                        Button("해제") { settings.workspaceFolder = nil }
-                    }
-                }
-            }
-
-            Section("기본 시스템 프롬프트") {
-                Text("모든 새 대화와 모델 변경 시 모델에 전달되는 기본 지시입니다. 선택한 스킬은 이 프롬프트 뒤에 누적됩니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextEditor(text: $settings.systemPrompt)
-                    .font(.system(size: 12))
-                    .frame(minHeight: 80, maxHeight: 160)
-                    .scrollContentBackground(.hidden)
-                    .padding(4)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(nsColor: .separatorColor)))
-            }
-
-            Section("호출 동작") {
-                Picker("글로벌 단축키 표시 방식", selection: $settings.presentationMode) {
-                    Text("기존 대화창을 앞으로").tag("window")
-                    Text("커서 근처 팝오버").tag("popover")
-                }
-                .pickerStyle(.radioGroup)
-            }
+            .padding(theme.space16)
         }
-        .formStyle(.grouped)
-        .padding()
         .onAppear {
             axGranted = SelectedTextCapture.isAccessibilityGranted
             if updateService.lastCheckedAt == nil {
@@ -219,18 +31,286 @@ struct GeneralSettingsView: View {
         }
     }
 
-    /// 액센트 라이브 미리보기 — 선택 즉시 색이 변하는 샘플 요소 (v2.1 T-105)
-    /// 커스텀 테마 선택 바인딩 — 선택 시 즉시 ThemeManager에 반영 (v0.2.6 축1a)
-    private var customThemeBinding: Binding<CustomTheme?> {
-        Binding(
-            get: { themeManager.activeCustomTheme },
-            set: { theme in
-                themeManager.activateCustomTheme(theme)
-                DebugLogger.shared.info("THEME", "[FEATURE] 커스텀 테마 활성화: \(theme?.name ?? "없음")")
-            }
-        )
+    private func settingsCard(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        ThemedSettingsCard(title) {
+            content()
+        }
     }
 
+    // MARK: - 외관
+
+    @ViewBuilder
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: theme.space10) {
+            Text("모드")
+                .font(.callout)
+                .foregroundStyle(theme.primaryText)
+            HStack(spacing: theme.space8) {
+                modeRadioButton("시스템 설정", value: "system", icon: "circle.lefthalf.filled")
+                modeRadioButton("다크 모드", value: "dark", icon: "moon.fill")
+                modeRadioButton("라이트 모드", value: "light", icon: "sun.max.fill")
+            }
+
+            Divider()
+
+            Text("액센트")
+                .font(.callout)
+                .foregroundStyle(theme.primaryText)
+            HStack(spacing: theme.space8) {
+                ForEach(AccentTheme.allCases) { accent in
+                    accentRadioButton(accent)
+                }
+            }
+
+            Divider()
+                Text("테마 관리")
+                    .font(.callout)
+                    .foregroundStyle(theme.primaryText)
+                InstalledThemesList()
+
+            accentPreviewCard
+
+            HStack {
+                Button("온보딩 다시 보기") {
+                    UserDefaults.standard.set(false, forKey: "onboardingCompleted")
+                    NotificationCenter.default.post(name: HotKeyManager.showOnboardingAgain, object: nil)
+                    DebugLogger.shared.info("APP", "[FEATURE] 온보딩 재실행 요청됨")
+                }
+                Spacer()
+            }
+        }
+    }
+
+    // MARK: - 가로 라디오 선택 (외형/액센트)
+
+    private func modeRadioButton(_ title: String, value: String, icon: String) -> some View {
+        let isSelected = settings.appearance == value
+        return Button {
+            settings.appearance = value
+            DebugLogger.shared.info("THEME", "[FEATURE] 외형 모드 변경 → 테마 동기화: \(value)")
+        } label: {
+            HStack(spacing: 6) {
+                radioIndicator(isSelected: isSelected)
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundStyle(isSelected ? theme.accentColor : theme.secondaryText)
+                Text(title)
+                    .font(.callout)
+                    .foregroundStyle(isSelected ? theme.primaryText : theme.secondaryText)
+            }
+            .radioChipBackground(isSelected: isSelected, theme: theme)
+        }
+        .buttonStyle(.plain)
+        .help("\(title) 모드로 전환")
+    }
+
+    private func accentRadioButton(_ accent: AccentTheme) -> some View {
+        let isSelected = settings.accentColor == accent.rawValue
+        return Button {
+            settings.accentColor = accent.rawValue
+        } label: {
+            HStack(spacing: 6) {
+                radioIndicator(isSelected: isSelected)
+                if let color = accent.color {
+                    Circle().fill(color).frame(width: 12, height: 12)
+                } else {
+                    Image(systemName: "circle.lefthalf.filled").font(.caption2)
+                }
+                Text(accent.displayName)
+                    .font(.callout)
+                    .foregroundStyle(isSelected ? theme.primaryText : theme.secondaryText)
+            }
+            .radioChipBackground(isSelected: isSelected, theme: theme)
+        }
+        .buttonStyle(.plain)
+        .help("액센트 \(accent.displayName)")
+    }
+
+    private func radioIndicator(isSelected: Bool) -> some View {
+        ZStack {
+            Circle()
+                .strokeBorder(isSelected ? theme.accentColor : theme.cardBorder, lineWidth: 1)
+                .frame(width: 14, height: 14)
+            if isSelected {
+                Circle().fill(theme.accentColor).frame(width: 8, height: 8)
+            }
+        }
+    }
+
+    private var accessibilitySection: some View {
+        VStack(alignment: .leading, spacing: theme.space8) {
+            HStack {
+                Image(systemName: axGranted ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(axGranted ? .green : .orange)
+                Text(axGranted ? "접근성 권한 허용됨" : "접근성 권한이 필요합니다 (선택 텍스트 가져오기)")
+                    .font(.callout)
+                    .foregroundStyle(theme.primaryText)
+                Spacer()
+                if !axGranted {
+                    Button("시스템 설정 열기") {
+                        SelectedTextCapture.openAccessibilitySettings()
+                    }
+                }
+            }
+            ThemedSettingsCaption("권한 허용 후 AIModelTalk를 다시 실행하면 자동 감지됩니다.")
+        }
+    }
+
+    private var updateSection: some View {
+        VStack(alignment: .leading, spacing: theme.space8) {
+            HStack {
+                Text("현재 버전")
+                    .font(.callout)
+                    .foregroundStyle(theme.primaryText)
+                Spacer()
+                Text(updateService.currentVersion)
+                    .font(.callout.monospaced())
+                    .foregroundStyle(theme.secondaryText)
+            }
+            HStack {
+                if updateService.isChecking {
+                    ProgressView().controlSize(.small)
+                    Text("확인 중…").font(.caption)
+                } else if updateService.hasUpdate, let release = updateService.latestRelease {
+                    Text("새 버전 \(release.version) 사용 가능")
+                        .font(.callout)
+                        .foregroundStyle(theme.accentColor)
+                    Spacer()
+                    Button("다운로드") { updateService.openReleasePage() }
+                } else if let error = updateService.errorMessage {
+                    Text(error).font(.caption).foregroundStyle(theme.errorColor)
+                    Spacer()
+                    Button("다시 시도") { Task { await updateService.checkForUpdates() } }
+                } else {
+                    Text("최신 버전입니다").font(.callout).foregroundStyle(theme.successColor)
+                    Spacer()
+                }
+                Button("지금 확인") {
+                    Task { await updateService.checkForUpdates() }
+                }
+                .disabled(updateService.isChecking)
+            }
+            ThemedSettingsCaption("업데이트는 GitHub Releases에서 수동으로 내려받습니다.")
+        }
+    }
+
+    private var comparisonSection: some View {
+        VStack(alignment: .leading, spacing: theme.space8) {
+            Toggle("판정 채점·리포트 사용", isOn: $settings.showJudgeSummary)
+                .toggleStyle(.switch)
+            ThemedSettingsCaption("비교 모드에서만 적용됩니다. 일반 대화에는 영향이 없습니다. OFF면 실측 속도 메트릭만 표시됩니다.")
+        }
+    }
+
+    private var auxiliarySection: some View {
+        VStack(alignment: .leading, spacing: theme.space8) {
+            ThemedSettingsRow("보조 모델") {
+                Picker("", selection: $settings.auxiliaryModelSpec) {
+                    Text("자동 (권장)").tag("")
+                    ForEach(auxiliaryChoices, id: \.spec) { choice in
+                        Text(choice.label).tag(choice.spec)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+            ThemedSettingsCaption("백그라운드 작업(자동 기억 추출, 세션 제목 생성)에 경량 모델을 써서 대화 모델 토큰을 절약합니다. 자동이면 flash·mini 계열을 우선 선택하고, 없으면 대화 모델을 사용합니다.")
+        }
+    }
+
+    @ViewBuilder
+    private var webSearchSection: some View {
+        VStack(alignment: .leading, spacing: theme.space8) {
+            Toggle("웹 검색 버튼 표시", isOn: $settings.webSearchEnabled)
+                .toggleStyle(.switch)
+            if settings.webSearchEnabled {
+                SecureField("Tavily API 키", text: $settings.tavilyAPIKey, prompt: Text("tvly-..."))
+                    .textFieldStyle(.roundedBorder)
+                HStack {
+                    ThemedSettingsCaption("무료 1,000회/월. 키는 이 Mac에만 저장됩니다.")
+                    Spacer()
+                    if let url = WebSearchBackend.tavily.signupURL.flatMap(URL.init(string:)) {
+                        Link("API 키 발급", destination: url)
+                            .font(.caption)
+                    }
+                }
+                ThemedSettingsCaption("입력창의 🌐 버튼으로 이번 전송에만 웹 검색 결과를 반영할 수 있습니다.")
+            }
+        }
+    }
+
+    private var agentSection: some View {
+        VStack(alignment: .leading, spacing: theme.space10) {
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("에이전트 모드", isOn: $settings.agentMode)
+                    .toggleStyle(.switch)
+                ThemedSettingsCaption("켜면 웹 검색·페이지 읽기·계산기 내장 도구를 자동 활성화해 에이전트처럼 동작합니다.")
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("YOLO 모드", isOn: $settings.yoloMode)
+                    .toggleStyle(.switch)
+                ThemedSettingsCaption("켜면 모든 도구 실행을 사전 확인 없이 자동 승인합니다. 주의해서 사용하세요.")
+            }
+        }
+    }
+
+    private var workspaceSection: some View {
+        VStack(alignment: .leading, spacing: theme.space10) {
+            HStack(alignment: .top, spacing: theme.space10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(settings.workspaceFolder == nil
+                         ? "지정 안 됨 — 파일 도구(list_dir/read_file/write_file/edit_file) 비활성"
+                         : "\(urlForWorkspace.lastPathComponent)")
+                        .font(.callout)
+                        .foregroundStyle(settings.workspaceFolder == nil ? theme.secondaryText : theme.primaryText)
+                    if let path = settings.workspaceFolder {
+                        Text(path)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(theme.secondaryText)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        ThemedSettingsCaption("모델이 이 폴더 안에서만 파일을 읽고 쓸 수 있습니다.")
+                    }
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 6) {
+                    Button(settings.workspaceFolder == nil ? "폴더 선택…" : "변경…") { pickWorkspaceFolder() }
+                    if settings.workspaceFolder != nil {
+                        Button("해제") { settings.workspaceFolder = nil }
+                    }
+                }
+            }
+        }
+    }
+
+    private var systemPromptSection: some View {
+        VStack(alignment: .leading, spacing: theme.space8) {
+            ThemedSettingsCaption("모든 새 대화와 모델 변경 시 모델에 전달되는 기본 지시입니다. 선택한 스킬은 이 프롬프트 뒤에 누적됩니다.")
+            TextEditor(text: $settings.systemPrompt)
+                .font(.system(size: 12))
+                .frame(minHeight: 80, maxHeight: 160)
+                .scrollContentBackground(.hidden)
+                .padding(4)
+                .background(RoundedRectangle(cornerRadius: theme.inputCornerRadius).fill(theme.inputBackground))
+                .overlay(RoundedRectangle(cornerRadius: theme.inputCornerRadius).strokeBorder(theme.inputBorder))
+        }
+    }
+
+    private var presentationSection: some View {
+        VStack(alignment: .leading, spacing: theme.space8) {
+            Text("글로벌 단축키 표시 방식")
+                .font(.callout)
+                .foregroundStyle(theme.primaryText)
+            Picker("", selection: $settings.presentationMode) {
+                Text("기존 대화창을 앞으로").tag("window")
+                Text("커서 근처 팝오버").tag("popover")
+            }
+            .labelsHidden()
+            .pickerStyle(.radioGroup)
+        }
+    }
+
+    /// 액센트 라이브 미리보기 — 선택 즉시 색이 변하는 샘플 요소 (v2.1 T-105)
     /// 보조 모델 선택지 — 활성화된 카탈로그 모델 (provider: id 스펙)
     private var auxiliaryChoices: [(spec: String, label: String)] {
         ModelCatalog.shared.models
@@ -239,10 +319,10 @@ struct GeneralSettingsView: View {
     }
 
     private var accentPreviewCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: theme.space10) {
             Text("미리보기 — 액센트가 적용되는 요소")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
 
             HStack(spacing: 14) {
                 Button {} label: {
@@ -258,10 +338,10 @@ struct GeneralSettingsView: View {
 
                 Text("스킬")
                     .font(.caption)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, theme.space10)
                     .padding(.vertical, 4)
-                    .background(Color.accentColor.opacity(0.15), in: Capsule())
-                    .foregroundStyle(Color.accentColor)
+                    .background(theme.accentColor.opacity(0.15), in: Capsule())
+                    .foregroundStyle(theme.accentColor)
             }
             .controlSize(.regular)
 
@@ -270,11 +350,11 @@ struct GeneralSettingsView: View {
                 Text("대화 말풍선 본문은 가독성을 위해 액센트와 무관하게 유지됩니다.")
             }
             .font(.caption2)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(theme.tertiaryText)
         }
-        .padding(12)
+        .padding(theme.space12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        .background(theme.secondaryBackground, in: RoundedRectangle(cornerRadius: theme.inputCornerRadius))
         .onAppear {
             DebugLogger.shared.info("APP", "[FEATURE] 액센트 미리보기 카드 표시됨")
         }
@@ -302,4 +382,5 @@ struct GeneralSettingsView: View {
 
 #Preview {
     GeneralSettingsView()
+        .environment(\.theme, ThemeBox(LightTheme()))
 }

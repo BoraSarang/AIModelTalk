@@ -92,7 +92,7 @@ struct SkillSettingsView: View {
                     Spacer(minLength: theme.cardInset)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 100)
+                .padding(theme.space16)
         
         
 

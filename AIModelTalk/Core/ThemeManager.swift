@@ -31,7 +31,7 @@ enum AppearanceMode: String, CaseIterable, Codable {
 
 /// 사용자 커스텀 테마 (JSON 직렬화 가능)
 public struct CustomTheme: Codable, Identifiable, Equatable, Hashable {
-    public let id: String
+    public var id: String
     var name: String
     var isDark: Bool
     var followsSystemAccent: Bool = true
@@ -159,6 +159,9 @@ public final class ThemeManager {
 
     /// 액티브 동안 didSet 발화를 잠금 (init)·저장소 복원 시 nonisolated Observation 경로 크래시 방지 (v0.3.1)
     private var isRestoringState = false
+
+    /// 재진입 잠금 — appearanceMode/액센트 didSet 연쇄에서 applyResolvedTheme이 동기 재귀로 쌓이는 것 방지 (v0.3.2)
+    private var isApplyingResolvedTheme = false
 
     /// 현재 활성 테마 (전역, Environment 주입용)
     var currentTheme: ThemeProtocol = LightTheme()
@@ -355,28 +358,44 @@ public final class ThemeManager {
     }
 
     private func applyResolvedTheme(for mode: AppearanceMode? = nil, animated: Bool = true) {
+        // 재진입 가드: didSet 연쇄(외형→액센트→커스텀 테마)에서 동기 재귀 방지 (v0.3.2)
+        guard !isApplyingResolvedTheme else { return }
+        isApplyingResolvedTheme = true
+        defer { isApplyingResolvedTheme = false }
+
         let effectiveMode = mode ?? appearanceMode
         let resolvedTheme: ThemeProtocol
 
         if let custom = activeCustomTheme {
             resolvedTheme = CustomizableTheme(config: custom)
         } else {
-            // NSApp이 아직 nil일 수 있는 시작 초기화 단계에서도 안전 — 시스템 다크 미확인이면 라이트 기본 (v0.3.1)
+            // 시스템 다크 판별은 NSApp.effectiveAppearance 대신 UserDefaults 기반 —
+            // effectiveAppearance 조회가 테마 didSet 경로에서 무한 재귀(스택 가드 SIGSEGV)를 유발 (v0.3.2 크래시 수정)
             let isDark = effectiveMode == .dark
-                || (effectiveMode == .system && (NSApp?.effectiveAppearance.isDarkMode ?? false))
+                || (effectiveMode == .system && systemInterfaceIsDark)
             resolvedTheme = isDark ? DarkTheme() : LightTheme()
         }
 
-        if animated {
-            // didSet/loadPreferences 경로는 nonisolated 컨텍스트일 수 있음 — MainActor 격리를 명시 보장 (v0.3.1 크래시 수정)
-            MainActor.assumeIsolated {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    currentTheme = resolvedTheme
-                }
+        // MainActor 격리 보장 — didSet 경로는 nonisolated 컨텍스트일 수 있어
+        // assumeIsolated 대신 검증된 메인 스레드 hop 방식 사용 (v0.3.1 트랩 재발 방지)
+        let apply: () -> Void = {
+            if animated {
+                withAnimation(.easeInOut(duration: 0.3)) { self.currentTheme = resolvedTheme }
+            } else {
+                self.currentTheme = resolvedTheme
             }
-        } else {
-            currentTheme = resolvedTheme
         }
+        if Thread.isMainThread {
+            apply()
+        } else {
+            DispatchQueue.main.async { apply() }
+        }
+    }
+
+    /// 시스템 인터페이스(다크 모드) 여부 — macOS 다크 모드로 전환하면
+    /// UserDefaults "AppleInterfaceStyle"이 "Dark"로 설정된다. 라이트면 값이 없거나 "Aqua".
+    private var systemInterfaceIsDark: Bool {
+        UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
     }
 
     private func applyCustomTheme(_ custom: CustomTheme, persist: Bool) {
@@ -502,12 +521,6 @@ extension NSAppearance {
         name == .darkAqua || name == .vibrantDark ||
         name == .accessibilityHighContrastDarkAqua ||
         name == .accessibilityHighContrastVibrantDark
-    }
-}
-
-extension NSApplication {
-    var effectiveAppearance: NSAppearance {
-        NSApp.effectiveAppearance
     }
 }
 
