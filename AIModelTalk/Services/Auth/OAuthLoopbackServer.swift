@@ -5,6 +5,14 @@ import Network
 /// 단일 요청 처리 후 자동 종료 (한 번만 사용)
 final class OAuthLoopbackServer {
 
+    /// 수동 OAuth용 고정 루프백 포트 — 사용자가 공급자 콘솔에 redirect URI를 등록할 수 있도록 고정
+    static let manualLoopbackPort: UInt16 = 13000
+
+    /// 수동 OAuth에서 콘솔 등록용으로 안내하는 redirect URI
+    static var manualCallbackURL: URL {
+        URL(string: "http://127.0.0.1:\(manualLoopbackPort)/callback")!
+    }
+
     private let listener: NWListener
     private let port: UInt16
     private var continuation: CheckedContinuation<URL, Error>?
@@ -16,6 +24,17 @@ final class OAuthLoopbackServer {
         params.allowLocalEndpointReuse = true
         self.listener = try NWListener(using: params, on: .any)
         self.port = listener.port?.rawValue ?? 0
+    }
+
+    /// 지정 포트 바인딩 (수동 OAuth — 콘솔 등록 redirect URI 고정용)
+    init(fixedPort: UInt16) throws {
+        let params = NWParameters.tcp
+        params.allowLocalEndpointReuse = true
+        guard let requested = NWEndpoint.Port(rawValue: fixedPort) else {
+            throw OAuthError.invalidLoopbackPort
+        }
+        self.listener = try NWListener(using: params, on: requested)
+        self.port = listener.port?.rawValue ?? fixedPort
     }
 
     /// 서버 시작 및 단일 콜백 대기

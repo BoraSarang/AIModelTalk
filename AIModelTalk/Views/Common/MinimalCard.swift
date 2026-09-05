@@ -10,6 +10,8 @@ struct MinimalCard: View {
     var borderWidth: CGFloat = 1
     var isHovering: Bool = false
     var isPressed: Bool = false
+    /// 테두리 강도 오버라이드 — 카드가 배경과 구분이 안 될 때 선명하게 (ProviderCard 등)
+    var borderOpacityOverride: Double? = nil
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -17,7 +19,7 @@ struct MinimalCard: View {
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(
-                        isPressed ? theme.focusBorder : isHovering ? theme.primaryBorder : theme.cardBorder.opacity(theme.borderOpacity),
+                        isPressed ? theme.focusBorder : isHovering ? theme.primaryBorder : theme.cardBorder.opacity(borderOpacityOverride ?? theme.borderOpacity),
                         lineWidth: borderWidth
                     )
             )

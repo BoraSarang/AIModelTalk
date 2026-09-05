@@ -10,6 +10,8 @@ enum OAuthError: Error, LocalizedError {
     case serverError(String)
     case tokenExchangeFailed(String)
     case noRegistrationEndpoint
+    case invalidLoopbackPort
+    case missingClientCredentials
 
     var errorDescription: String? {
         switch self {
@@ -21,6 +23,8 @@ enum OAuthError: Error, LocalizedError {
         case .serverError(let msg): return msg
         case .tokenExchangeFailed(let msg): return "토큰 교환 실패: \(msg)"
         case .noRegistrationEndpoint: return "DCR 엔드포인트 없음"
+        case .invalidLoopbackPort: return "루프백 포트 바인딩 실패"
+        case .missingClientCredentials: return "Client ID/Secret을 입력하세요"
         }
     }
 }

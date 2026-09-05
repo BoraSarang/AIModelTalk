@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// 원격 MCP 공급자 카탈로그 뷰 — 그리드/리스트로 탐색, 선택 시 연결 화면으로
 struct MCPProviderCatalogView: View {
@@ -247,6 +248,11 @@ struct MCPProviderConnectView: View {
     let template: MCPProviderTemplate
     @State private var customURL: String = ""
     @State private var apiKey: String = ""
+    @State private var clientId: String = ""
+    @State private var clientSecret: String = ""
+    @State private var customAuthEndpoint: String = ""
+    @State private var customTokenEndpoint: String = ""
+    @State private var oauthMode: MCPAuthMode
     @State private var isConnecting = false
     @State private var connectionError: String?
     @State private var showSuccess = false
@@ -254,6 +260,9 @@ struct MCPProviderConnectView: View {
     init(template: MCPProviderTemplate) {
         self.template = template
         _customURL = State(initialValue: template.defaultURL)
+        _oauthMode = State(initialValue: template.authMode)
+        _customAuthEndpoint = State(initialValue: template.authorizationEndpoint ?? "")
+        _customTokenEndpoint = State(initialValue: template.tokenEndpoint ?? "")
     }
 
     var body: some View {
@@ -286,13 +295,11 @@ struct MCPProviderConnectView: View {
             Divider()
                 .foregroundStyle(theme.secondaryBorder)
 
-            // 인증 방식별 UI
+            // 인증 방식별 UI — OAuth 템플릿은 자동/수동 선택 (T-333)
             Group {
                 switch template.authMode {
-                case .oauth21DCR:
-                    oauthConnectView
-                case .oauth21Manual:
-                    oauthManualView
+                case .oauth21DCR, .oauth21Manual:
+                    oauthModeSection
                 case .apiKey:
                     apiKeyView
                 case .selfHosted:
@@ -335,7 +342,7 @@ struct MCPProviderConnectView: View {
         }
         .background(theme.secondaryBackground)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .frame(width: 480, height: 380)
+        .frame(width: 480, height: frameHeight)
         .alert("연결 완료", isPresented: $showSuccess) {
             Button("확인") { dismiss() }
         } message: {
@@ -359,10 +366,44 @@ struct MCPProviderConnectView: View {
         case select, auth, connect
     }
 
+    /// OAuth 자동/수동 선택 래퍼 (T-333) — 기본값은 템플릿 권장 방식
+    private var oauthModeSection: some View {
+        VStack(spacing: 12) {
+            Picker("", selection: $oauthMode) {
+                Text("자동").tag(MCPAuthMode.oauth21DCR)
+                Text("수동").tag(MCPAuthMode.oauth21Manual)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 220)
+            if oauthMode == .oauth21Manual {
+                oauthManualView
+            } else {
+                oauthConnectView
+            }
+        }
+    }
+
+    private var frameHeight: CGFloat {
+        switch template.authMode {
+        case .apiKey, .selfHosted:
+            return 380
+        case .oauth21DCR, .oauth21Manual:
+            return oauthMode == .oauth21Manual ? 640 : 420
+        }
+    }
+
     private var currentStep: Step {
         if showSuccess { return .connect }
         if isConnecting { return .auth }
         return .select
+    }
+
+    /// URL 비교용 정규화 — 공백 제거 + 후행 슬래시 제거 (T-326)
+    private static func normalizedURL(_ url: String) -> String {
+        var value = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        while value.hasSuffix("/") { value.removeLast() }
+        return value
     }
 
     // MARK: - OAuth 자동 연결 (DCR)
@@ -411,18 +452,89 @@ struct MCPProviderConnectView: View {
     }
 
     private func connectOAuth() async {
+        var config = MCPProviderConfiguration.fromTemplate(template, customURL: customURL.isEmpty ? nil : customURL)
+        config.authMode = .oauth21DCR
+        applyDedupIfNeeded(&config)
+        await performOAuth(
+            config: config,
+            authorizationEndpoint: nil,
+            tokenEndpoint: nil,
+            mode: "OAuth 2.1 DCR"
+        )
+    }
+
+    /// 수동 OAuth — 사용자가 발급받은 Client ID/Secret으로 인가 (전 공급자, T-333)
+    /// 엔드포인트는 템플릿 내장값 프리필 + 직접 수정 가능 (미지원 공급자용)
+    private func connectOAuthManual() async {
+        var config = MCPProviderConfiguration.fromTemplate(template, customURL: customURL.isEmpty ? nil : customURL)
+        config.authMode = .oauth21Manual
+        config.clientId = clientId.trimmingCharacters(in: .whitespacesAndNewlines)
+        config.clientSecret = clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        let endpoints = MCPOAuthService.resolveEndpoints(
+            template: template,
+            customAuthorizationEndpoint: customAuthEndpoint,
+            customTokenEndpoint: customTokenEndpoint
+        )
+        config.customAuthorizationEndpoint = nonEmptyOrNil(customAuthEndpoint)
+        config.customTokenEndpoint = nonEmptyOrNil(customTokenEndpoint)
+        applyDedupIfNeeded(&config)
+        await performOAuth(
+            config: config,
+            authorizationEndpoint: endpoints.authorizationEndpoint,
+            tokenEndpoint: endpoints.tokenEndpoint,
+            mode: "OAuth 2.1 수동"
+        )
+    }
+
+    private func nonEmptyOrNil(_ value: String) -> String? {
+        let t = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
+    /// 수동 연결 가능 여부 — Client ID/Secret + 양 엔드포인트(템플릿 또는 입력) 필요
+    private var canConnectManual: Bool {
+        let endpoints = MCPOAuthService.resolveEndpoints(
+            template: template,
+            customAuthorizationEndpoint: customAuthEndpoint,
+            customTokenEndpoint: customTokenEndpoint
+        )
+        return !clientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !clientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !(endpoints.authorizationEndpoint?.isEmpty ?? true)
+            && !(endpoints.tokenEndpoint?.isEmpty ?? true)
+    }
+
+    /// 동일 공급자(templateID + 정규화 url)가 이미 등록되어 있으면 기존 항목에 갱신 (T-326)
+    private func applyDedupIfNeeded(_ config: inout MCPProviderConfiguration) {
+        if let existing = store.providers.first(where: {
+            $0.templateID == template.id && Self.normalizedURL($0.url) == Self.normalizedURL(config.url)
+        }) {
+            DebugLogger.shared.info("MCP", "[FEATURE] 동일 공급자 발견 — 기존 항목 갱신: \(existing.id.uuidString)")
+            config.id = existing.id
+            config.isEnabled = existing.isEnabled
+        }
+    }
+
+    /// 공통 OAuth 실행 — 자동(DCR)/수동 모두 이 경로로
+    private func performOAuth(
+        config: MCPProviderConfiguration,
+        authorizationEndpoint: String?,
+        tokenEndpoint: String?,
+        mode: String
+    ) async {
         isConnecting = true
         connectionError = nil
-        DebugLogger.shared.info("MCP", "[FEATURE] 공급자 연결 시작: \(template.name) (OAuth 2.1 DCR)")
+        DebugLogger.shared.info("MCP", "[FEATURE] 공급자 연결 시작: \(template.name) (\(mode))")
 
-        let config = MCPProviderConfiguration.fromTemplate(template, customURL: customURL.isEmpty ? nil : customURL)
+        let scopes = template.scopes.isEmpty ? ["read"] : template.scopes
 
         do {
-            let scopes = template.scopes.isEmpty ? ["read"] : template.scopes
             let result = try await MCPOAuthService.authenticate(
                 config: config,
                 scopes: scopes,
-                knownIssuer: template.issuer
+                knownIssuer: template.issuer,
+                authorizationEndpoint: authorizationEndpoint,
+                tokenEndpoint: tokenEndpoint
             )
 
             DebugLogger.shared.debug("MCP", "[FEATURE] OAuth 성공 — 토큰 저장 시작")
@@ -469,25 +581,98 @@ struct MCPProviderConnectView: View {
     // MARK: - OAuth 수동 (Client ID/Secret 입력)
 
     private var oauthManualView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             Image(systemName: "key.ring")
-                .font(.system(size: 44))
+                .font(.system(size: 36))
                 .foregroundStyle(theme.accentColor)
 
             Text("OAuth 2.1 수동 설정")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(theme.primaryText)
 
-            Text("공급자 개발자 콘솔에서 OAuth 앱을 생성하고 Client ID/Secret을 발급받아 입력하세요.")
-                .font(.system(size: 13))
+            Text("""
+            \(template.name) 개발자 콘솔에서 OAuth 앱을 생성하고 아래 redirect URI를 등록한 뒤 \
+            Client ID/Secret을 발급받아 입력하세요.
+            """)
+                .font(.system(size: 12))
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            // TODO: Client ID/Secret 입력 필드 + 리다이렉트 URI 안내
-            Text("구현 예정: Client ID/Secret 입력")
-                .font(.system(size: 11))
-                .foregroundStyle(theme.tertiaryText)
+            // 리다이렉트 URI (콘솔 등록용) + 복사
+            HStack(spacing: 8) {
+                Text(OAuthLoopbackServer.manualCallbackURL.absoluteString)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(theme.primaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(theme.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(theme.secondaryBorder, lineWidth: 1)
+                    )
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(OAuthLoopbackServer.manualCallbackURL.absoluteString, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+
+            VStack(spacing: 8) {
+                TextField("Client ID", text: $clientId)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12, design: .monospaced))
+                SecureField("Client Secret", text: $clientSecret)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12, design: .monospaced))
+                TextField("Authorize URL (비우면 템플릿 기본값)", text: $customAuthEndpoint)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                TextField("Token URL (비우면 템플릿 기본값)", text: $customTokenEndpoint)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                if template.authorizationEndpoint == nil && template.tokenEndpoint == nil {
+                    Text("이 공급자는 기본 엔드포인트가 없습니다 — 개발자 콘솔의 OAuth 정보를 직접 입력하세요.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(width: 380)
+
+            HStack(spacing: 12) {
+                if let url = URL(string: template.docsURL) {
+                    Link("설정 가이드 보기", destination: url)
+                        .font(.system(size: 12))
+                        .foregroundStyle(theme.accentColor)
+                }
+
+                if isConnecting {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("브라우저 열기 중…")
+                            .font(.system(size: 13))
+                            .foregroundStyle(theme.secondaryText)
+                    }
+                } else {
+                    GradientButton(
+                        title: "브라우저에서 연결",
+                        icon: "safari",
+                        action: { Task { await connectOAuthManual() } }
+                    )
+                    .disabled(!canConnectManual)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
     }

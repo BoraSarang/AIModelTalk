@@ -14,6 +14,9 @@ struct MCPProviderConfiguration: Identifiable, Codable, Hashable {
     var clientId: String?
     var clientSecret: String?               // Keychain에 별도 저장 권장, 여기선 참조용
     var issuer: String?                     // 인증 서버 issuer
+    // 수동 OAuth 커스텀 엔드포인트 (T-333) — 입력값이 템플릿 내장값보다 우선
+    var customAuthorizationEndpoint: String?
+    var customTokenEndpoint: String?
 
     // 토큰 (Keychain 저장 키 참조)
     var accessTokenKey: String?             // "mcp.provider.<id>.access_token"
@@ -80,6 +83,8 @@ struct MCPProviderConfiguration: Identifiable, Codable, Hashable {
         clientId: String? = nil,
         clientSecret: String? = nil,
         issuer: String? = nil,
+        customAuthorizationEndpoint: String? = nil,
+        customTokenEndpoint: String? = nil,
         accessTokenKey: String? = nil,
         refreshTokenKey: String? = nil,
         tokenExpiresAt: Date? = nil,
@@ -97,6 +102,8 @@ struct MCPProviderConfiguration: Identifiable, Codable, Hashable {
         self.clientId = clientId
         self.clientSecret = clientSecret
         self.issuer = issuer
+        self.customAuthorizationEndpoint = customAuthorizationEndpoint
+        self.customTokenEndpoint = customTokenEndpoint
         self.accessTokenKey = accessTokenKey
         self.refreshTokenKey = refreshTokenKey
         self.tokenExpiresAt = tokenExpiresAt
@@ -122,6 +129,7 @@ struct MCPProviderConfiguration: Identifiable, Codable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case id, templateID, name, url, authMode, isEnabled
         case clientId, clientSecret, issuer
+        case customAuthorizationEndpoint, customTokenEndpoint
         case accessTokenKey, refreshTokenKey, tokenExpiresAt, apiKeyKey
         case lastConnectedAt, lastError, toolCount
     }
@@ -137,6 +145,8 @@ struct MCPProviderConfiguration: Identifiable, Codable, Hashable {
         clientId = try c.decodeIfPresent(String.self, forKey: .clientId)
         clientSecret = try c.decodeIfPresent(String.self, forKey: .clientSecret)
         issuer = try c.decodeIfPresent(String.self, forKey: .issuer)
+        customAuthorizationEndpoint = try c.decodeIfPresent(String.self, forKey: .customAuthorizationEndpoint)
+        customTokenEndpoint = try c.decodeIfPresent(String.self, forKey: .customTokenEndpoint)
         accessTokenKey = try c.decodeIfPresent(String.self, forKey: .accessTokenKey)
         refreshTokenKey = try c.decodeIfPresent(String.self, forKey: .refreshTokenKey)
         tokenExpiresAt = try c.decodeIfPresent(Date.self, forKey: .tokenExpiresAt)

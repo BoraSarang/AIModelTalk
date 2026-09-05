@@ -37,6 +37,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
     let authMode: MCPAuthMode
     let scopes: [String]              // 기본 요청 스코프
     let issuer: String?               // 알려진 인증 서버 issuer (자동 발견용 힌트)
+    let authorizationEndpoint: String?  // 수동 OAuth 전용 — DCR 미지원 공급자의 authorize URL
+    let tokenEndpoint: String?         // 수동 OAuth 전용 — DCR 미지원 공급자의 token URL
     let docsURL: String               // 설정 가이드 URL
     let category: Category
 
@@ -61,9 +63,11 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             description: "이슈/프로젝트 관리 — 티켓 조회, 생성, 업데이트",
             icon: "list.bullet.rectangle",
             defaultURL: "https://mcp.linear.app",
-            authMode: .oauth21DCR,
+            authMode: .oauth21Manual,
             scopes: ["issues:read", "issues:write", "projects:read"],
             issuer: "https://linear.app",
+            authorizationEndpoint: "https://linear.app/oauth/authorize",
+            tokenEndpoint: "https://api.linear.app/oauth/token",
             docsURL: "https://linear.app/docs/mcp",
             category: .development
         ),
@@ -73,9 +77,11 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             description: "리포지토리/이슈/PR 관리 — 코드 검색, 파일 읽기, PR 생성",
             icon: "chevron.left.forwardslash.chevron.right",
             defaultURL: "https://api.github.com/mcp",
-            authMode: .oauth21DCR,
+            authMode: .oauth21Manual,
             scopes: ["repo", "read:org", "workflow"],
             issuer: "https://github.com",
+            authorizationEndpoint: "https://github.com/login/oauth/authorize",
+            tokenEndpoint: "https://github.com/login/oauth/access_token",
             docsURL: "https://docs.github.com/en/mcp",
             category: .development
         ),
@@ -88,6 +94,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .oauth21DCR,
             scopes: ["api", "read_repository"],
             issuer: "https://gitlab.com",
+            authorizationEndpoint: "https://gitlab.com/oauth/authorize",
+            tokenEndpoint: "https://gitlab.com/oauth/token",
             docsURL: "https://docs.gitlab.com/ee/user/mcp/",
             category: .development
         ),
@@ -100,6 +108,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .oauth21DCR,
             scopes: ["read:deployments", "write:deployments"],
             issuer: "https://vercel.com",
+            authorizationEndpoint: nil,
+            tokenEndpoint: nil,
             docsURL: "https://vercel.com/docs/mcp",
             category: .development
         ),
@@ -114,6 +124,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .oauth21DCR,
             scopes: ["read:pages", "write:pages", "read:databases", "write:databases"],
             issuer: "https://api.notion.com",
+            authorizationEndpoint: nil,
+            tokenEndpoint: nil,
             docsURL: "https://developers.notion.com/docs/mcp",
             category: .productivity
         ),
@@ -126,6 +138,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .oauth21DCR,
             scopes: ["channels:read", "chat:write", "files:read", "search:read"],
             issuer: "https://slack.com",
+            authorizationEndpoint: "https://slack.com/oauth/v2/authorize",
+            tokenEndpoint: "https://slack.com/api/oauth.v2.access",
             docsURL: "https://api.slack.com/mcp",
             category: .communication
         ),
@@ -138,6 +152,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .oauth21DCR,
             scopes: ["read:jira-work", "write:jira-work", "read:confluence", "write:confluence"],
             issuer: "https://auth.atlassian.com",
+            authorizationEndpoint: nil,
+            tokenEndpoint: nil,
             docsURL: "https://developer.atlassian.com/cloud/mcp/",
             category: .productivity
         ),
@@ -152,6 +168,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .oauth21DCR,
             scopes: ["projects:read", "database:read", "database:write"],
             issuer: "https://api.supabase.com",
+            authorizationEndpoint: nil,
+            tokenEndpoint: nil,
             docsURL: "https://supabase.com/docs/mcp",
             category: .data
         ),
@@ -164,6 +182,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .oauth21DCR,
             scopes: ["account:read", "zone:read", "workers:read", "workers:write"],
             issuer: "https://dash.cloudflare.com",
+            authorizationEndpoint: nil,
+            tokenEndpoint: nil,
             docsURL: "https://developers.cloudflare.com/mcp/",
             category: .data
         ),
@@ -176,6 +196,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .oauth21DCR,
             scopes: ["event:read", "project:read", "org:read"],
             issuer: "https://sentry.io",
+            authorizationEndpoint: nil,
+            tokenEndpoint: nil,
             docsURL: "https://docs.sentry.io/mcp/",
             category: .development
         ),
@@ -190,6 +212,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .oauth21DCR,
             scopes: ["read:charges", "read:customers", "read:subscriptions", "write:customers"],
             issuer: "https://connect.stripe.com",
+            authorizationEndpoint: nil,
+            tokenEndpoint: nil,
             docsURL: "https://stripe.com/docs/mcp",
             category: .data
         ),
@@ -204,6 +228,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .apiKey,
             scopes: [],
             issuer: nil,
+            authorizationEndpoint: nil,
+            tokenEndpoint: nil,
             docsURL: "https://platform.openai.com/docs/mcp",
             category: .other
         ),
@@ -216,6 +242,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .apiKey,
             scopes: [],
             issuer: nil,
+            authorizationEndpoint: nil,
+            tokenEndpoint: nil,
             docsURL: "https://docs.anthropic.com/mcp",
             category: .other
         ),
@@ -230,6 +258,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .selfHosted,
             scopes: [],
             issuer: nil,
+            authorizationEndpoint: nil,
+            tokenEndpoint: nil,
             docsURL: "https://docs.osaurus.ai/remote-mcp-providers",
             category: .other
         ),
@@ -242,6 +272,8 @@ struct MCPProviderTemplate: Identifiable, Codable, Hashable {
             authMode: .selfHosted,
             scopes: [],
             issuer: nil,
+            authorizationEndpoint: nil,
+            tokenEndpoint: nil,
             docsURL: "https://docs.osaurus.ai/remote-mcp-providers",
             category: .other
         )

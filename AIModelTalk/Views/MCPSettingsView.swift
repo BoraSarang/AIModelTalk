@@ -2,11 +2,25 @@ import SwiftUI
 
 // MARK: - MCP 서버 관리 설정 화면 (v2.4 T-121, v2.5 원격 MCP 공급자 추가)
 
+/// MCP 삭제 확인 대화상자 대상 — Identifiable 단일 alert용
+enum MCPDeletionTarget: Identifiable {
+    case provider(MCPProviderConfiguration)
+    case server(MCPServerConfig)
+
+    var id: String {
+        switch self {
+        case .provider(let p): return "provider-\(p.id)"
+        case .server(let s): return "server-\(s.id)"
+        }
+    }
+}
+
 struct MCPSettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var stdioStore = MCPServerStore.shared
     @ObservedObject private var remoteStore = MCPProviderStore.shared
     @ObservedObject private var manager = MCPProviderManager.shared
+    @Environment(\.theme) private var theme
 
     /// stdio 서버 상태 프로브 결과
     @State private var stdioProbes: [UUID: ProbeResult] = [:]
@@ -16,6 +30,8 @@ struct MCPSettingsView: View {
     @State private var editingServer: MCPServerConfig?
     @State private var showProviderCatalog = false
     @State private var editingRemoteProvider: MCPProviderConfiguration?
+    /// 삭제 확인 대화상자 대상 (공급자/stdio 서버) — 단일 alert로 처리 (macOS 동일 뷰 다중 alert 충돌 회피)
+    @State private var confirmDeletion: MCPDeletionTarget?
 
     struct ProbeResult {
         var ok: Bool
@@ -30,104 +46,16 @@ struct MCPSettingsView: View {
     }
 
     var body: some View {
-        Form {
-            // MARK: - 원격 MCP 공급자 섹션 (ProviderCard 그리드)
-            Section {
-                HStack {
-                    Label("원격 MCP 공급자", systemImage: "externaldrive")
-                        .font(.headline)
-                    Spacer()
-                    if isProbing {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                    Button("상태 확인") { Task { await probeAll() } }
-                        .disabled(isProbing || remoteStore.providers.isEmpty)
-                    Button {
-                        showProviderCatalog = true
-                    } label: {
-                        Label("공급자 연결…", systemImage: "plus")
-                    }
-                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: theme.space12) {
+                ThemedSettingsCard { remoteSection }
 
-                if remoteStore.providers.isEmpty {
-                    EmptyStateView.noProviders(onConnect: { showProviderCatalog = true })
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                } else {
-                    // 헬스 스냅샷 카드
-                    healthSnapshotCard
+                ThemedSettingsCard("MCP 도구 — 베타 (v2.4)") { toolsSection }
 
-                    // ProviderCard 그리드 (2열)
-                    LazyVGrid(columns: [
-                        GridItem(.flexible(), spacing: 12),
-                        GridItem(.flexible(), spacing: 12)
-                    ], spacing: 12) {
-                        ForEach(Array(remoteStore.providers.enumerated()), id: \.element.id) { index, provider in
-                            ProviderCard(
-                                report: reportForProvider(provider),
-                                animationIndex: index,
-                                isTesting: false,
-                                onEdit: { editingRemoteProvider = provider },
-                                onDelete: {
-                                    remoteStore.remove(provider.id)
-                                    remoteProbes[provider.id] = nil
-                                    manager.disconnect(provider.id)
-                                },
-                                onConnect: { Task { await probeRemote(provider) } },
-                                onDisconnect: { manager.disconnect(provider.id) },
-                                onTest: { Task { await probeRemote(provider) } },
-                                onCopyDiagnostics: { copyDiagnostics(for: provider) },
-                                onToggleEnabled: { newValue in
-                                    var updated = provider
-                                    updated.isEnabled = newValue
-                                    remoteStore.upsert(updated)
-                                    if !newValue { manager.disconnect(provider.id) }
-                                },
-                                onSignIn: { editingRemoteProvider = provider },
-                                onSaveBearerToken: { token in
-                                    remoteStore.setAccessToken(token, for: provider.id)
-                                }
-                            )
-                        }
-                    }
-                }
+                ThemedSettingsCard("로컬 MCP 서버 (stdio)") { stdioSection }
             }
-
-            // MARK: - MCP 도구 섹션
-            Section("MCP 도구 — 베타 (v2.4)") {
-                Toggle("도구 사용 활성화", isOn: $settings.mcpToolsEnabled)
-                Text("연결된 MCP(stdio/원격) 서버의 도구를 모델이 호출합니다. OpenAI 호환·Anthropic 모델만 지원하며, 기본 정책은 실행 전 매번 확인입니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            // MARK: - 로컬 stdio 서버 섹션 (기존)
-            Section("로컬 MCP 서버 (stdio)") {
-                HStack {
-                    Text("서버 목록")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button {
-                        editingServer = MCPServerConfig(name: "", command: "")
-                    } label: {
-                        Label("추가", systemImage: "plus")
-                    }
-                }
-                if stdioStore.servers.isEmpty {
-                    Text("등록된 로컬 서버가 없습니다. '추가'로 stdio MCP 서버를 등록하세요.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(stdioStore.servers) { server in
-                        serverRow(server)
-                    }
-                }
-            }
+            .padding(theme.space16)
         }
-        .formStyle(.grouped)
-        .padding()
         .sheet(item: $editingServer) { config in
             MCPServerEditSheet(config: config)
         }
@@ -147,54 +75,138 @@ struct MCPSettingsView: View {
                     }
                 }
         }
+        .alert(item: $confirmDeletion) { target in
+            switch target {
+            case .provider(let provider):
+                return Alert(
+                    title: Text("'\(provider.displayName)' 공급자 삭제"),
+                    message: Text("연결 정보와 설정이 제거됩니다. 되돌릴 수 없습니다."),
+                    primaryButton: .destructive(Text("삭제")) {
+                        remoteStore.remove(provider.id)
+                        remoteProbes[provider.id] = nil
+                        manager.disconnect(provider.id)
+                    },
+                    secondaryButton: .cancel(Text("취소"))
+                )
+            case .server(let server):
+                return Alert(
+                    title: Text("'\(server.name)' 서버 삭제"),
+                    message: Text("등록된 MCP 서버 설정이 제거됩니다. 되돌릴 수 없습니다."),
+                    primaryButton: .destructive(Text("삭제")) {
+                        stdioStore.remove(server.id)
+                        stdioProbes[server.id] = nil
+                    },
+                    secondaryButton: .cancel(Text("취소"))
+                )
+            }
+        }
     }
 
-    // MARK: - 헬스 스냅샷 카드
+    // MARK: - 원격 공급자 섹션
 
-    private var healthSnapshotCard: some View {
+    @ViewBuilder
+    private var remoteSection: some View {
+        VStack(alignment: .leading, spacing: theme.space10) {
+            HStack {
+                Label("원격 MCP 공급자", systemImage: "externaldrive")
+                    .font(.headline)
+                    .foregroundStyle(theme.primaryText)
+                if !remoteStore.providers.isEmpty {
+                    Text(remoteSummary)
+                        .font(.caption)
+                        .foregroundStyle(theme.secondaryText)
+                        .monospacedDigit()
+                }
+                Spacer()
+                if isProbing {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Button("상태 확인") { Task { await probeAll() } }
+                    .disabled(isProbing || remoteStore.providers.isEmpty)
+                Button {
+                    showProviderCatalog = true
+                } label: {
+                    Label("공급자 연결…", systemImage: "plus")
+                }
+            }
+
+            if remoteStore.providers.isEmpty {
+                EmptyStateView.noProviders(onConnect: { showProviderCatalog = true }, compact: true)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, theme.space8)
+            } else {
+                LazyVGrid(columns: [
+                    GridItem(.flexible(), spacing: 16),
+                    GridItem(.flexible(), spacing: 16)
+                ], spacing: 16) {
+                    ForEach(Array(remoteStore.providers.enumerated()), id: \.element.id) { index, provider in
+                        ProviderCard(
+                            report: reportForProvider(provider),
+                            animationIndex: index,
+                            isTesting: false,
+                            onEdit: { editingRemoteProvider = provider },
+                            onDelete: { confirmDeletion = .provider(provider) },
+                            onConnect: { Task { await probeRemote(provider) } },
+                            onDisconnect: { manager.disconnect(provider.id) },
+                            onTest: { Task { await probeRemote(provider) } },
+                            onCopyDiagnostics: { copyDiagnostics(for: provider) },
+                            onToggleEnabled: { newValue in
+                                var updated = provider
+                                updated.isEnabled = newValue
+                                remoteStore.upsert(updated)
+                                if !newValue { manager.disconnect(provider.id) }
+                            },
+                            onSignIn: { editingRemoteProvider = provider },
+                            onSaveBearerToken: { token in
+                                remoteStore.setAccessToken(token, for: provider.id)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private var toolsSection: some View {
+        VStack(alignment: .leading, spacing: theme.space8) {
+            Toggle("도구 사용 활성화", isOn: $settings.mcpToolsEnabled)
+                .toggleStyle(.switch)
+            ThemedSettingsCaption("연결된 MCP(stdio/원격) 서버의 도구를 모델이 호출합니다. OpenAI 호환·Anthropic 모델만 지원하며, 기본 정책은 실행 전 매번 확인입니다.")
+        }
+    }
+
+    private var stdioSection: some View {
+        VStack(alignment: .leading, spacing: theme.space10) {
+            HStack {
+                ThemedSettingsCaption("서버 목록")
+                Spacer()
+                Button {
+                    editingServer = MCPServerConfig(name: "", command: "")
+                } label: {
+                    Label("추가", systemImage: "plus")
+                }
+            }
+            if stdioStore.servers.isEmpty {
+                ThemedSettingsCaption("등록된 로컬 서버가 없습니다. '추가'로 stdio MCP 서버를 등록하세요.")
+            } else {
+                ForEach(stdioStore.servers) { server in
+                    serverRow(server)
+                }
+            }
+        }
+    }
+
+    // MARK: - Helper
+
+    /// 헤더줄 요약 — 기존 별도 "공급자 상태/활성 도구/전체 공급자" 카드(T-325) 대체
+    private var remoteSummary: String {
         let totalProviders = remoteStore.providers.count
         let enabledProviders = remoteStore.providers.filter(\.isEnabled).count
         let connectedCount = remoteStore.providers.filter { remoteProbes[$0.id]?.ok == true }.count
         let totalTools = remoteProbes.values.filter(\.ok).reduce(0) { $0 + $1.toolCount }
-
-        return HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("공급자 상태")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("\(connectedCount)/\(enabledProviders) 연결됨")
-                    .font(.system(size: 13, weight: .semibold))
-            }
-            Divider()
-            VStack(alignment: .leading, spacing: 2) {
-                Text("활성 도구")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("\(totalTools)개")
-                    .font(.system(size: 13, weight: .semibold))
-            }
-            Divider()
-            VStack(alignment: .leading, spacing: 2) {
-                Text("전체 공급자")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("\(totalProviders)개")
-                    .font(.system(size: 13, weight: .semibold))
-            }
-            Spacer()
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        )
+        return "\(connectedCount)/\(enabledProviders) 연결됨 · 도구 \(totalTools)개 · 전체 \(totalProviders)"
     }
-
-    // MARK: - Helper
 
     private func reportForProvider(_ provider: MCPProviderConfiguration) -> MCPServerHubProviderReport {
         let probe = remoteProbes[provider.id]
@@ -266,12 +278,12 @@ struct MCPSettingsView: View {
             Button("편집") { editingServer = server }
                 .controlSize(.small)
             Button(role: .destructive) {
-                stdioStore.remove(server.id)
-                stdioProbes[server.id] = nil
+                confirmDeletion = .server(server)
             } label: {
                 Image(systemName: "trash")
             }
             .controlSize(.small)
+            .help("삭제")
         }
         .padding(.vertical, 4)
     }

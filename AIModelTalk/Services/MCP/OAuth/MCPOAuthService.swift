@@ -32,35 +32,95 @@ final class MCPOAuthService {
         }
     }
 
+    /// 수동 OAuth 엔드포인트 결정 (T-333) — 순수 함수, 테스트 가능
+    /// 우선순위: 사용자 커스텀 입력 > 템플릿 내장값. 둘 다 비면 nil.
+    nonisolated static func resolveEndpoints(
+        template: MCPProviderTemplate,
+        customAuthorizationEndpoint: String?,
+        customTokenEndpoint: String?
+    ) -> (authorizationEndpoint: String?, tokenEndpoint: String?) {
+        let customAuth = customAuthorizationEndpoint?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let customToken = customTokenEndpoint?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let auth = (customAuth?.isEmpty == false) ? customAuth : template.authorizationEndpoint
+        let token = (customToken?.isEmpty == false) ? customToken : template.tokenEndpoint
+        return (auth, token)
+    }
+
     /// 전체 OAuth 플로우 실행
     /// - Parameters:
     ///   - config: 공급자 설정 (MCPProviderConfiguration에서 변환)
     ///   - scopes: 요청할 스코프
     ///   - knownIssuer: 알려진 인증 서버 issuer (템플릿에 있으면 전달, 없으면 nil로 자동 발견)
+    ///   - authorizationEndpoint: 수동 OAuth 전용 authorize URL (DCR 미지원 공급자)
+    ///   - tokenEndpoint: 수동 OAuth 전용 token URL (DCR 미지원 공급자)
     static func authenticate(
         config: MCPProviderConfiguration,
         scopes: [String],
-        knownIssuer: String? = nil
+        knownIssuer: String? = nil,
+        authorizationEndpoint: String? = nil,
+        tokenEndpoint: String? = nil
     ) async throws -> OAuthResult {
-        DebugLogger.shared.info("MCP", "[OAUTH] [\(config.displayName)] 인증 시작 (scopes: \(scopes.joined(separator: " ")), issuer: \(knownIssuer ?? "auto"))")
+        let isManual = authorizationEndpoint != nil && tokenEndpoint != nil
+        DebugLogger.shared.info("MCP", "[OAUTH] [\(config.displayName)] 인증 시작 (scopes: \(scopes.joined(separator: " ")), issuer: \(knownIssuer ?? "auto"), mode: \(isManual ? "수동" : "DCR"))")
 
-        // 1. 루프백 서버 시작
-        let loopback = try OAuthLoopbackServer()
+        // 1. 루프백 서버 시작 (수동은 콘솔 등록 가능한 고정 포트 사용)
+        let loopback: OAuthLoopbackServer
+        if isManual {
+            loopback = try OAuthLoopbackServer(fixedPort: OAuthLoopbackServer.manualLoopbackPort)
+        } else {
+            loopback = try OAuthLoopbackServer()
+        }
         let callbackURL = loopback.callbackURL
         let verifier = PKCE.generateVerifier()
         DebugLogger.shared.debug("MCP", "[OAUTH] 루프백 서버 시작: \(callbackURL.absoluteString)")
 
-        // 2. 인증 서버 메타데이터 발견
-        let resourceURL = URL(string: config.url)!
-        let (_, asm) = try await MCPOAuthDiscovery.discoverAll(
-            for: resourceURL,
-            knownIssuer: knownIssuer ?? config.issuer
-        )
-        DebugLogger.shared.debug("MCP", "[OAUTH] 메타데이터 발견: auth=\(asm.authorizationEndpoint) token=\(asm.tokenEndpoint)")
+        // 2. 인증 서버 메타데이터 — 수동은 템플릿 엔드포인트 직접 사용 (디스커버리 생략)
+        let asm: MCPOAuthDiscovery.AuthorizationServerMetadata
+        if isManual {
+            asm = MCPOAuthDiscovery.AuthorizationServerMetadata(
+                issuer: config.issuer ?? knownIssuer ?? "",
+                authorizationEndpoint: authorizationEndpoint!,
+                tokenEndpoint: tokenEndpoint!,
+                jwksUri: nil,
+                registrationEndpoint: nil,
+                scopesSupported: scopes,
+                responseTypesSupported: ["code"],
+                grantTypesSupported: ["authorization_code", "refresh_token"],
+                codeChallengeMethodsSupported: ["S256"],
+                tokenEndpointAuthMethodsSupported: ["client_secret_post"]
+            )
+            DebugLogger.shared.debug("MCP", "[OAUTH] 수동 메타데이터 사용: auth=\(authorizationEndpoint!) token=\(tokenEndpoint!)")
+        } else {
+            let resourceURL = URL(string: config.url)!
+            let (_, discovered) = try await MCPOAuthDiscovery.discoverAll(
+                for: resourceURL,
+                knownIssuer: knownIssuer ?? config.issuer
+            )
+            asm = discovered
+            DebugLogger.shared.debug("MCP", "[OAUTH] 메타데이터 발견: auth=\(asm.authorizationEndpoint) token=\(asm.tokenEndpoint)")
+        }
 
-        // 3. DCR로 클라이언트 등록 (이미 등록된 client_id가 있으면 스킵)
+        // 3. 클라이언트 확정 — 수동은 사용자 등록 자격증명 직접 사용, DCR는 등록/기존 재사용
         let registrationResult: MCPOAuthRegistration.RegistrationResponse
-        if let existingClientId = config.clientId, !existingClientId.isEmpty {
+        if isManual {
+            guard let clientId = config.clientId?.trimmingCharacters(in: .whitespacesAndNewlines), !clientId.isEmpty else {
+                DebugLogger.shared.error("MCP", "[OAUTH] 수동 OAuth: Client ID 누락")
+                throw OAuthError.missingClientCredentials
+            }
+            registrationResult = MCPOAuthRegistration.RegistrationResponse(
+                clientId: clientId,
+                clientSecret: config.clientSecret,
+                clientIdIssuedAt: nil,
+                clientSecretExpiresAt: nil,
+                redirectUris: [callbackURL.absoluteString],
+                tokenEndpointAuthMethod: "client_secret_post",
+                grantTypes: ["authorization_code", "refresh_token"],
+                responseTypes: ["code"],
+                scope: scopes.joined(separator: " "),
+                clientName: "Osaurus"
+            )
+            DebugLogger.shared.info("MCP", "[OAUTH] 수동 클라이언트 사용: client_id=\(clientId.prefix(6))…")
+        } else if let existingClientId = config.clientId, !existingClientId.isEmpty {
             // 기존 클라이언트 사용 — redirect_uri 업데이트 필요할 수 있음
             DebugLogger.shared.info("MCP", "[OAUTH] 기존 client_id 사용: \(existingClientId)")
             registrationResult = MCPOAuthRegistration.RegistrationResponse(
@@ -136,6 +196,7 @@ final class MCPOAuthService {
         let tokenResponse = try await exchangeToken(
             tokenEndpoint: asm.tokenEndpoint,
             clientId: registrationResult.clientId,
+            clientSecret: registrationResult.clientSecret,
             code: code,
             redirectURI: callbackURL.absoluteString,
             verifier: verifier
@@ -235,6 +296,7 @@ final class MCPOAuthService {
     private static func exchangeToken(
         tokenEndpoint: String,
         clientId: String,
+        clientSecret: String?,
         code: String,
         redirectURI: String,
         verifier: String
@@ -245,6 +307,10 @@ final class MCPOAuthService {
             "redirect_uri": redirectURI,
             "client_id": clientId
         ]
+        // 기밀 클라이언트면 client_secret 포함 (GitHub, Linear 등 수동 자격증명)
+        if let clientSecret, !clientSecret.isEmpty {
+            params["client_secret"] = clientSecret
+        }
         // PKCE verifier 추가
         let pkceTokenParams = PKCE.tokenParameters(verifier: verifier)
         params.merge(pkceTokenParams) { _, new in new }

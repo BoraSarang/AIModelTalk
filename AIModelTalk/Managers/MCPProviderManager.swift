@@ -129,10 +129,18 @@ final class MCPProviderManager: ObservableObject {
               let issuer = provider.issuer ?? template.issuer else { return }
 
         do {
-            // 인증 서버 메타데이터에서 토큰 엔드포인트 재발견
-            let asm = try await MCPOAuthDiscovery.discoverAuthorizationServer(issuer: issuer)
+            // 수동 OAuth 커스텀 토큰 엔드포인트 우선 (T-333) — 없으면 기존 재발견
+            let tokenEndpoint: String
+            if let custom = provider.customTokenEndpoint?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !custom.isEmpty {
+                tokenEndpoint = custom
+                DebugLogger.shared.debug("MCP", "[\(provider.displayName)] 커스텀 토큰 엔드포인트 사용")
+            } else {
+                let asm = try await MCPOAuthDiscovery.discoverAuthorizationServer(issuer: issuer)
+                tokenEndpoint = asm.tokenEndpoint
+            }
             let response = try await MCPOAuthService.refreshToken(
-                tokenEndpoint: asm.tokenEndpoint,
+                tokenEndpoint: tokenEndpoint,
                 clientId: provider.clientId ?? "",
                 refreshToken: refreshToken
             )

@@ -11,6 +11,8 @@ struct EmptyStateView: View {
     let message: String
     let primaryAction: EmptyStateAction?
     let secondaryAction: EmptyStateAction?
+    /// 컴팩트 모드 — 카드/셉션 안에 담기 위한 축소판 (MCP 설정 등). 기본 비활성.
+    var compact: Bool = false
 
     struct EmptyStateAction {
         let label: String
@@ -20,24 +22,24 @@ struct EmptyStateView: View {
     }
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: compact ? 10 : 20) {
             // 캐릭터 일러스트 (SF Symbol 폴백 포함)
-            CharacterIllustrations.CharacterImage(character: character, size: 160)
+            CharacterIllustrations.CharacterImage(character: character, size: compact ? 80 : 160)
                 .opacity(0.9)
 
             // 텍스트
-            VStack(spacing: 8) {
+            VStack(spacing: compact ? 4 : 8) {
                 Text(title)
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: compact ? 14 : 20, weight: .semibold))
                     .foregroundStyle(theme.primaryText)
                     .multilineTextAlignment(.center)
 
                 Text(message)
-                    .font(.system(size: 14))
+                    .font(.system(size: compact ? 12 : 14))
                     .foregroundStyle(theme.secondaryText)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 320)
+                    .frame(maxWidth: compact ? 220 : 320)
             }
 
             // 액션 버튼들
@@ -50,7 +52,7 @@ struct EmptyStateView: View {
                             action: secondary.action,
                             isPrimary: false
                         )
-                        .controlSize(.regular)
+                        .controlSize(compact ? .small : .regular)
                     }
 
                     if let primary = primaryAction {
@@ -60,13 +62,13 @@ struct EmptyStateView: View {
                             action: primary.action,
                             isPrimary: true
                         )
-                        .controlSize(.regular)
+                        .controlSize(compact ? .small : .regular)
                     }
                 }
             }
         }
-        .padding(32)
-        .frame(maxWidth: 420)
+        .padding(compact ? 16 : 32)
+        .frame(maxWidth: compact ? 260 : 420)
     }
 }
 
@@ -100,8 +102,8 @@ extension EmptyStateView {
         )
     }
 
-    /// 공급자 없음 빈 상태
-    static func noProviders(onConnect: @escaping () -> Void) -> EmptyStateView {
+    /// 공급자 없음 빈 상태 (compact — 설정 카드 내 표시용)
+    static func noProviders(onConnect: @escaping () -> Void, compact: Bool = false) -> EmptyStateView {
         EmptyStateView(
             character: .empty,
             title: "연결된 공급자가 없습니다",
@@ -111,7 +113,8 @@ extension EmptyStateView {
                 icon: "plus",
                 action: onConnect
             ),
-            secondaryAction: nil
+            secondaryAction: nil,
+            compact: compact
         )
     }
 
