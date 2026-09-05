@@ -31,7 +31,8 @@ struct AIModel: Identifiable, Codable, Hashable {
     private static let visionKeywords = [
         "gpt-4o", "gpt-4.1", "claude-3", "claude-4", "gemini",
         "llama-4", "llama4", "pixtral", "vision", "llava", "-vl",
-        "moondream", "minicpm-v", "bakllava"
+        "moondream", "minicpm-v", "bakllava",
+        "mimo", "inkling", "nano-omni", "minimax-m3", // 검증 무료 멀티모달 (T-331)
     ]
 
     static func == (lhs: AIModel, rhs: AIModel) -> Bool {
@@ -50,11 +51,12 @@ enum ChatRole: String, Codable {
     case assistant
 }
 
-/// 세션 용도 모드 (v0.3.x 축4) — 채팅/이미지 생성/코딩
+/// 세션 용도 모드 (v0.3.x 축4) — 채팅/이미지 생성/코딩/오디오 TTS (T-332)
 enum ChatMode: String, Codable, CaseIterable, Identifiable {
     case chat
     case image
     case coding
+    case audio
 
     var id: String { rawValue }
 
@@ -63,6 +65,7 @@ enum ChatMode: String, Codable, CaseIterable, Identifiable {
         case .chat: return "채팅"
         case .image: return "이미지"
         case .coding: return "코딩"
+        case .audio: return "오디오"
         }
     }
 
@@ -71,6 +74,7 @@ enum ChatMode: String, Codable, CaseIterable, Identifiable {
         case .chat: return "bubble.left.and.bubble.right"
         case .image: return "photo.on.rectangle.angled"
         case .coding: return "chevron.left.forwardslash.chevron.right"
+        case .audio: return "waveform"
         }
     }
 }
@@ -142,8 +146,14 @@ struct ChatSession: Identifiable, Codable {
     var themeID: String? = nil
     /// 세션 용도 모드 (v0.3.x 축4) — 채팅/이미지/코딩
     var mode: ChatMode = .chat
+    /// 이미지 모드에서 선택한 생성 모델 (provider:id 스펙) — nil이면 기본 모델 (T-329)
+    var selectedImageModelID: String? = nil
+    /// 코딩 모드에서 선택한 코딩 모델 (provider:id 스펙) — nil이면 현재 선택 모델 (T-329)
+    var selectedCodingModelID: String? = nil
+    /// 오디오 모드에서 선택한 TTS 모델 (provider:id 스펙) — nil이면 기본 모델 (T-332)
+    var selectedAudioModelID: String? = nil
 
-    init(id: UUID = UUID(), title: String = "새 대화", systemPrompt: String = "", messages: [ChatMessage] = [], currentModel: AIModel? = nil, selectedSkills: [SkillInfo] = [], createdAt: Date = Date(), updatedAt: Date = Date(), parentSessionID: UUID? = nil, forkedFromMessageID: UUID? = nil, isIncognito: Bool = false, archivedAt: Date? = nil, deletedAt: Date? = nil, themeID: String? = nil, mode: ChatMode = .chat) {
+    init(id: UUID = UUID(), title: String = "새 대화", systemPrompt: String = "", messages: [ChatMessage] = [], currentModel: AIModel? = nil, selectedSkills: [SkillInfo] = [], createdAt: Date = Date(), updatedAt: Date = Date(), parentSessionID: UUID? = nil, forkedFromMessageID: UUID? = nil, isIncognito: Bool = false, archivedAt: Date? = nil, deletedAt: Date? = nil, themeID: String? = nil, mode: ChatMode = .chat, selectedImageModelID: String? = nil, selectedCodingModelID: String? = nil, selectedAudioModelID: String? = nil) {
         self.id = id
         self.title = title
         self.systemPrompt = systemPrompt
@@ -159,6 +169,9 @@ struct ChatSession: Identifiable, Codable {
         self.deletedAt = deletedAt
         self.themeID = themeID
         self.mode = mode
+        self.selectedImageModelID = selectedImageModelID
+        self.selectedCodingModelID = selectedCodingModelID
+        self.selectedAudioModelID = selectedAudioModelID
     }
 }
 

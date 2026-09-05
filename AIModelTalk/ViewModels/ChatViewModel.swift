@@ -1077,16 +1077,86 @@ final class ChatViewModel: ObservableObject {
     func setMode(_ mode: ChatMode, for sessionID: UUID) {
         guard let idx = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
         sessions[idx].mode = mode
+        _cachedSession = nil // 캐시 무효화 없이는 Picker/전송 분기가 stale 상태를 읽음 (T-329)
+        saveSession(sessions[idx])
         DebugLogger.shared.info("MODE", "[FEATURE] 세션 모드 변경: \(mode.label)")
+    }
+
+    // MARK: - 세션 모드 모델 선택 (T-329)
+
+    private static func modelSpec(_ model: AIModel) -> String {
+        "\(model.provider.rawValue):\(model.id)"
+    }
+
+    /// 이미지 모드 선택 모델 (ChatSession.selectedImageModelID 스펙)
+    func selectedImageModel(for sessionID: UUID) -> AIModel? {
+        guard let spec = sessions.first(where: { $0.id == sessionID })?.selectedImageModelID else { return nil }
+        let parts = spec.split(separator: ":", maxSplits: 1)
+        guard parts.count == 2, let provider = Provider(rawValue: String(parts[0])) else { return nil }
+        return ModelCatalog.imageModels.first { $0.provider == provider && $0.id == String(parts[1]) }
+    }
+
+    /// 코딩 모드 선택 모델 (ChatSession.selectedCodingModelID 스펙)
+    func selectedCodingModel(for sessionID: UUID) -> AIModel? {
+        guard let spec = sessions.first(where: { $0.id == sessionID })?.selectedCodingModelID else { return nil }
+        let parts = spec.split(separator: ":", maxSplits: 1)
+        guard parts.count == 2, let provider = Provider(rawValue: String(parts[0])) else { return nil }
+        return ModelCatalog.shared.models.first { $0.provider == provider && $0.id == String(parts[1]) }
+    }
+
+    func setImageModel(_ model: AIModel, for sessionID: UUID) {
+        guard let idx = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        sessions[idx].selectedImageModelID = Self.modelSpec(model)
+        _cachedSession = nil
+        saveSession(sessions[idx])
+        DebugLogger.shared.info("MODE", "[FEATURE] 이미지 생성 모델 선택: \(model.displayName)")
+    }
+
+    func setCodingModel(_ model: AIModel, for sessionID: UUID) {
+        guard let idx = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        sessions[idx].selectedCodingModelID = Self.modelSpec(model)
+        _cachedSession = nil
+        saveSession(sessions[idx])
+        DebugLogger.shared.info("MODE", "[FEATURE] 코딩 모델 선택: \(model.displayName)")
+    }
+
+    /// 오디오 모드 선택 모델 (ChatSession.selectedAudioModelID 스펙) (T-332)
+    func selectedAudioModel(for sessionID: UUID) -> AIModel? {
+        guard let spec = sessions.first(where: { $0.id == sessionID })?.selectedAudioModelID else { return nil }
+        let parts = spec.split(separator: ":", maxSplits: 1)
+        guard parts.count == 2, let provider = Provider(rawValue: String(parts[0])) else { return nil }
+        return ModelCatalog.audioModels.first { $0.provider == provider && $0.id == String(parts[1]) }
+    }
+
+    func setAudioModel(_ model: AIModel, for sessionID: UUID) {
+        guard let idx = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        sessions[idx].selectedAudioModelID = Self.modelSpec(model)
+        _cachedSession = nil
+        saveSession(sessions[idx])
+        DebugLogger.shared.info("MODE", "[FEATURE] 오디오 TTS 모델 선택: \(model.displayName)")
     }
 
     func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isLoading, let sessionID = currentSessionID else { return }
-        // 이미지 모드 분기 (v0.3.x 축4) — 이미지 생성 파이프라인
-        if currentSession?.mode == .image, let imageModel = ModelCatalog.imageModels.first {
+        // 이미지 모드 분기 (v0.3.x 축4, T-329) — 선택 이미지 모델로 생성
+        if currentSession?.mode == .image {
             inputText = ""
-            sendImage(text, to: sessionID, model: imageModel)
+            if let imageModel = selectedImageModel(for: sessionID) ?? ModelCatalog.imageModels.first {
+                sendImage(text, to: sessionID, model: imageModel)
+            } else {
+                DebugLogger.shared.warn("MODE", "이미지 생성 모델이 없습니다 — 이미지 모드에서 전송 취소")
+            }
+            return
+        }
+        // 오디오 모드 분기 (v0.3.3 T-332) — 선택 TTS 모델로 합성
+        if currentSession?.mode == .audio {
+            inputText = ""
+            if let audioModel = selectedAudioModel(for: sessionID) ?? ModelCatalog.audioModels.first {
+                sendAudio(text, to: sessionID, model: audioModel)
+            } else {
+                DebugLogger.shared.warn("MODE", "오디오 TTS 모델이 없습니다 — 오디오 모드에서 전송 취소")
+            }
             return
         }
         // 이미지 첨부 시 비전 지원 모델인지 확인 (T-71)
@@ -1144,8 +1214,52 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    // MARK: - 이미지 첨부 (v1.8 T-71)
+    // MARK: - 오디오 TTS 전송 (v0.3.3 T-332)
 
+    /// 오디오 모드 전송 — AudioClient로 합성해 음성을 어시스턴트 메시지에 부착
+    func sendAudio(_ text: String, to sessionID: UUID, model: AIModel) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isLoading,
+              let idx = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        isLoading = true
+        sessions[idx].messages.append(ChatMessage(role: .user, content: trimmed))
+        let assistant = ChatMessage(role: .assistant, content: "음성 합성 중…",
+                                    provider: model.provider, modelID: model.id, isStreaming: true)
+        sessions[idx].messages.append(assistant)
+        let assistantID = assistant.id
+        Task {
+            do {
+                let result = try await AudioClient.speak(text: trimmed, model: model)
+                let attachment = MessageAttachment(
+                    fileName: "tts-\(Int(Date().timeIntervalSince1970)).mp3",
+                    mimeType: "audio/mpeg",
+                    imageData: result.audioData)
+                mutateMessages(of: sessionID) { msgs in
+                    for i in msgs.indices where msgs[i].id == assistantID {
+                        msgs[i].content = trimmed
+                        msgs[i].attachments = [attachment]
+                        msgs[i].isStreaming = false
+                    }
+                }
+                DebugLogger.shared.info("AUDIO", "[FEATURE] TTS 합성 어시스턴트 메시지 부착 완료")
+            } catch {
+                // 410/404면 모델 자동제외 (미검증 Magpie ID 안전망)
+                _ = ModelCatalog.shared.disableUnavailableModel(error: error, model: model)
+                let appError = error as? AppError
+                DebugLogger.shared.error("AUDIO", "[\(appError?.errorCode ?? "E-MAC-API-1001")] TTS 합성 실패: \(error.localizedDescription)")
+                mutateMessages(of: sessionID) { msgs in
+                    for i in msgs.indices where msgs[i].id == assistantID {
+                        msgs[i].content = "음성 합성 실패: \(error.localizedDescription)"
+                        msgs[i].isError = true
+                        msgs[i].isStreaming = false
+                    }
+                }
+            }
+            isLoading = false
+        }
+    }
+
+    // MARK: - 이미지 첨부 (v1.8 T-71)
     /// 이미지 데이터 추가 — 다운스케일 후 대기열에 저장 (최대 4개)
     /// PNG/JPEG 원본은 축소 불필요 시 무손실 패스스루, 나머지(HEIC/TIFF 등)는 JPEG로 변환
     func addImageAttachment(_ rawData: Data, fileName: String? = nil) {

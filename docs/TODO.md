@@ -1,14 +1,32 @@
-# TODO — AIModelTalk v0.2.6 ~ v0.3.0
+# TODO — AIModelTalk v0.3.3
 
-v0.2.6+ "AI 채팅 기능 전면 실현". 상세: `docs/plans/PLAN_v0.2.6_macos.md`.
-범위 확정: 축1 테마 적용 / 축2 크레딧·비용(추적+표시) / 축3 로컬 폴더·파일 접근 / 축4 용도 모드·이미지 생성.
+- [x] T-331 검증된 무료 모델 카탈로그 반영 — Zen/OpenRouter/NIM 대조(2026-09-05 기준) 후 defaultModels·fallbackPriority·codingPreferredIDs·supportsVision 갱신 (무료만) (2026-09-05)
+- [x] T-332 오디오 모드 추가 + 모드별 추천 일원화 + 추천 기본 활성화 — ChatMode.audio·AudioClient(NIM /audio/speech)·sendAudio·말풍선 재생·defaultEnabledIDs (2026-09-05)
+- [x] T-333 전체 MCP 공급자 자동/수동 OAuth 병행 — 모드 선택 UI + 커스텀 엔드포인트 + 갱신 경로 반영 (T-328 흡수) (2026-09-05)
 
-## 진행 중
+# TODO — AIModelTalk v0.3.2
 
-(없음 — 축1~4 완료)
+v0.3.2 "토큰 상태 표시" (v0.2.6~0.3.1 완료). 상세: `docs/plans/PLAN_v0.3.2_macos.md`.
+범위 확정: 축2 비용(USD) 제거 / 채팅 하단 토큰 상태 배지·팝오버 / 설정 토큰 상태 탭(사용 중 공급자·모델만).
+
+## 완료 (v0.3.2)
+
+- [x] T-321 비용 제거 — ChatMessage.costUSD·SessionCost·AIModel 가격필드(isPaid)·ModelsSettings 가격 편집 UI·말풍선 실비용·CostSettingsView 삭제 (2026-09-05)
+- [x] T-322 토큰 배지 — TokenQuota.swift 스냅샷(실측 누적+추정 폴백)/계정풀(Anthropic 헤더) + ChatInputBarView "남음 N 토큰" 배지·팝오버 (2026-09-05)
+- [x] T-323 토큰 상태 탭 — 활성 공급자·모델(실측 사용 기록만) 테이블, 설정 탭명 "토큰 상태"·아이콘 tuningfork (2026-09-05)
+- [x] T-324 GradientButton 다크 복구 — 배경 luminance 반전이 글자색/스피너 tint (AllPrimary 버튼 전역) (2026-09-05)
+- [x] T-325 MCP 헬스바 → 섹션 헤더 병합 — 공급자 요약을 헤더줄 소형 표시 + ProviderCard 레이아웃(overlay→background) 수정 (2026-09-05)
+- [x] T-326 MCP 공급자 중복 방지 — connectOAuth에서 동일 templateID+정규화 url 기존 항목 id 재사용 + 삭제 컨펌(단일 alert) + 빈 상태 compact (2026-09-05)
+- [x] T-327 수동 OAuth 연결 — Linear/GitHub를 .oauth21Manual 전환 + Client ID/Secret 입력 폼 + 고정 루프백 포트(13000) 리다이렉트 URI 안내 + 수동 엔드포인트 경로 (2026-09-05)
+- [x] T-329a: 용도 모드 세그먼트 동작 복구 — setMode에서 _cachedSession 무효화 누락으로 Picker/이미지 전송 분기가 stale 상태 읽던 버그 수정 + 세션 영속화 (2026-09-05)
+- [x] T-329b: 이미지/코딩 모델 선택 — ChatSession.selectedImageModelID·selectedCodingModelID(provider:id) + ChatViewModel 선택/해제 헬퍼 + 이미지 전송이 선택 모델 사용 (2026-09-05)
+- [x] T-329c: 입력바 모드 컨트롤 줄 — 이미지=생성 모델 메뉴(gpt-image-1/dall-e-3), 코딩=추천 세트∩활성 모델 메뉴 + 워크스페이스 폴더 선택/변경/해제(NSOpenPanel) (2026-09-05)
+- [x] T-329d: 코딩 파일 목록 접이식 패널 — 상위 3레벨 트리(디렉터리 우선) + 컨텍스트 메뉴(경로 복사/입력창 삽입) (2026-09-05) — 실기동 확인 대기
+- [x] T-329e: 코딩 모델 Menu가 한글 입력 IME 교착(IMK→TSM XPC 응답 유실, 메인 스레드 HIRunLoopSemaphore 스핀 CPU 105%) 유발 → 이미지/코딩 모델 선택을 **Menu → 팝오버 목록**으로 교체 + 세그먼트 좌측 정렬 고정 (2026-09-05)
 
 ## 백로그
 
+- [ ] T-328 GitLab·Notion·Slack 등 DCR 미지원 공급자도 수동(manual) 전환 + 사용자 정의 OAuth 엔드포인트 입력
 - [ ] T-320 코드 블록 Splash SPM 연동 (선택 — regex 폴백 사용 중)
 - [ ] T-* 크레딧 충전/잔액 백엔드 연동 (백엔드 준비 시)
 

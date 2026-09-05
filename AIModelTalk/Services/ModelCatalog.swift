@@ -103,11 +103,23 @@ final class ModelCatalog: ObservableObject {
         AIModel(id: "openai/gpt-oss-20b", provider: .nvidia, displayName: "GPT-OSS-20B", contextLimit: 131_072),
         AIModel(id: "nvidia/llama-3.3-nemotron-super-49b-v1.5", provider: .nvidia, displayName: "Nemotron Super 49B", contextLimit: 131_072),
         AIModel(id: "nvidia/llama-3.1-8b-instruct", provider: .nvidia, displayName: "Llama 3.1 8B", contextLimit: 131_072),
-        // OpenRouter (":free" suffix)
-        AIModel(id: "google/gemini-2.5-flash-preview:free", provider: .openRouter, displayName: "Gemini 2.5 Flash", contextLimit: 1_048_576),
-        AIModel(id: "deepseek/deepseek-chat-v3-0324:free", provider: .openRouter, displayName: "DeepSeek V3", contextLimit: 128_000),
-        AIModel(id: "meta-llama/llama-4-maverick:free", provider: .openRouter, displayName: "Llama 4 Maverick", contextLimit: 1_048_576),
-        AIModel(id: "qwen/qwen3-235b-a22b:free", provider: .openRouter, displayName: "Qwen3 235B", contextLimit: 128_000),
+        AIModel(id: "qwen/qwen3-coder-480b-a35b-instruct", provider: .nvidia, displayName: "Qwen3 Coder 480B", contextLimit: 262_144),
+        // OpenRouter (":free" suffix — 2026-09-05 /models 대조 확정 19종 중 문서 추천분)
+        AIModel(id: "cohere/north-mini-code:free", provider: .openRouter, displayName: "North Mini Code", contextLimit: 256_000),
+        AIModel(id: "poolside/laguna-s-2.1:free", provider: .openRouter, displayName: "Laguna S 2.1", contextLimit: 262_144),
+        AIModel(id: "poolside/laguna-xs-2.1:free", provider: .openRouter, displayName: "Laguna XS 2.1", contextLimit: 262_144),
+        AIModel(id: "nvidia/nemotron-3-ultra-550b-a55b:free", provider: .openRouter, displayName: "Nemotron 3 Ultra", contextLimit: 1_048_576),
+        AIModel(id: "nvidia/nemotron-3-super-120b-a12b:free", provider: .openRouter, displayName: "Nemotron 3 Super", contextLimit: 262_144),
+        AIModel(id: "nvidia/nemotron-3.5-lightning:free", provider: .openRouter, displayName: "Nemotron 3.5 Lightning", contextLimit: 1_048_576),
+        AIModel(id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", provider: .openRouter, displayName: "Nemotron 3 Nano Omni", contextLimit: 256_000),
+        AIModel(id: "minimax/minimax-m3:free", provider: .openRouter, displayName: "MiniMax M3", contextLimit: 1_048_576),
+        AIModel(id: "minimax/minimax-m2.7:free", provider: .openRouter, displayName: "MiniMax M2.7", contextLimit: 196_608),
+        AIModel(id: "thinkingmachines/inkling:free", provider: .openRouter, displayName: "Inkling", contextLimit: 1_048_576),
+        AIModel(id: "thinkingmachines/inkling-small:free", provider: .openRouter, displayName: "Inkling Small", contextLimit: 1_048_576),
+        AIModel(id: "inclusionai/ling-3.0-flash-fin:free", provider: .openRouter, displayName: "Ling 3.0 Flash Fin", contextLimit: 262_144),
+        AIModel(id: "dots-studio/dots-3-note-preview:free", provider: .openRouter, displayName: "Dots3 Note Preview", contextLimit: 512_000),
+        AIModel(id: "z-ai/glm-5.2:free", provider: .openRouter, displayName: "GLM 5.2", contextLimit: 256_000),
+        AIModel(id: "liquid/lfm-2.5-2.6b:free", provider: .openRouter, displayName: "LFM 2.5 (경량)", contextLimit: 65_536),
         // Groq
         AIModel(id: "llama-3.3-70b-versatile", provider: .groq, displayName: "Llama 3.3 70B", contextLimit: 131_072),
         AIModel(id: "gemma2-9b-it", provider: .groq, displayName: "Gemma 2 9B", contextLimit: 8_192),
@@ -116,20 +128,24 @@ final class ModelCatalog: ObservableObject {
         AIModel(id: "gemini-3.6-flash", provider: .gemini, displayName: "Gemini 3.6 Flash", contextLimit: 1_048_576),
         AIModel(id: "gemini-3.5-flash-lite", provider: .gemini, displayName: "Gemini 3.5 Flash-Lite", contextLimit: 1_048_576),
         // OpenAI / Anthropic (유료 — API 키 보유자용 대표 모델, v2.1 T-93 무료전용 정책 폐기)
-        // 가격 = 백만 토큰당 USD (v0.2.7 축2)
-        AIModel(id: "gpt-4o-mini", provider: .openAI, displayName: "GPT-4o mini", isFree: false, contextLimit: 128_000, inputPricePerM: 0.15, outputPricePerM: 0.60),
-        AIModel(id: "gpt-4o", provider: .openAI, displayName: "GPT-4o", isFree: false, contextLimit: 128_000, inputPricePerM: 2.50, outputPricePerM: 10.00),
-        AIModel(id: "claude-haiku-4-5", provider: .anthropic, displayName: "Claude Haiku 4.5", isFree: false, contextLimit: 200_000, inputPricePerM: 1.00, outputPricePerM: 5.00),
-        AIModel(id: "claude-sonnet-4-5", provider: .anthropic, displayName: "Claude Sonnet 4.5", isFree: false, contextLimit: 200_000, inputPricePerM: 3.00, outputPricePerM: 15.00),
+        AIModel(id: "gpt-4o-mini", provider: .openAI, displayName: "GPT-4o mini", isFree: false, contextLimit: 128_000),
+        AIModel(id: "gpt-4o", provider: .openAI, displayName: "GPT-4o", isFree: false, contextLimit: 128_000),
+        AIModel(id: "claude-haiku-4-5", provider: .anthropic, displayName: "Claude Haiku 4.5", isFree: false, contextLimit: 200_000),
+        AIModel(id: "claude-sonnet-4-5", provider: .anthropic, displayName: "Claude Sonnet 4.5", isFree: false, contextLimit: 200_000),
         // OpenCode Zen (게이트웨이, OpenAI 호환 chat/completions — 무료 먼저, 유료는 isFree: false)
+        // 무료 6종은 2026-09-05 공식 문서 대조 확정. Muse Spark는 문서상 /responses
+        // 엔드포인트라 chat/completions 직결은 실기동 확인 필요 (T-331)
         AIModel(id: "opencode/big-pickle", provider: .opencode, displayName: "Big Pickle (무료)", contextLimit: 128_000),
         AIModel(id: "opencode/nemotron-3-ultra-free", provider: .opencode, displayName: "Nemotron 3 Ultra (무료)", contextLimit: 128_000),
+        AIModel(id: "opencode/nemotron-3.5-lightning-free", provider: .opencode, displayName: "Nemotron 3.5 Lightning (무료)", contextLimit: 1_048_576),
         AIModel(id: "opencode/mimo-v2.5-free", provider: .opencode, displayName: "MiMo V2.5 (무료)", contextLimit: 128_000),
-        AIModel(id: "opencode/deepseek-v4-flash", provider: .opencode, displayName: "DeepSeek V4 Flash", isFree: false, contextLimit: 128_000, inputPricePerM: 0.20, outputPricePerM: 0.60),
-        AIModel(id: "opencode/deepseek-v4-pro", provider: .opencode, displayName: "DeepSeek V4 Pro", isFree: false, contextLimit: 128_000, inputPricePerM: 0.50, outputPricePerM: 1.50),
+        AIModel(id: "opencode/ling-3.0-flash-fin-free", provider: .opencode, displayName: "Ling 3.0 Flash Fin (무료)", contextLimit: 262_144),
+        AIModel(id: "opencode/muse-spark-1.3-contributor-free", provider: .opencode, displayName: "Muse Spark 1.3 (무료)", contextLimit: 1_048_576),
+        AIModel(id: "opencode/deepseek-v4-flash", provider: .opencode, displayName: "DeepSeek V4 Flash", isFree: false, contextLimit: 128_000),
+        AIModel(id: "opencode/deepseek-v4-pro", provider: .opencode, displayName: "DeepSeek V4 Pro", isFree: false, contextLimit: 128_000),
         // DeepSeek (공식 API — 유료)
-        AIModel(id: "deepseek-chat", provider: .deepseek, displayName: "DeepSeek Chat", isFree: false, contextLimit: 128_000, inputPricePerM: 0.27, outputPricePerM: 1.10),
-        AIModel(id: "deepseek-reasoner", provider: .deepseek, displayName: "DeepSeek Reasoner", isFree: false, contextLimit: 64_000, inputPricePerM: 0.55, outputPricePerM: 2.19),
+        AIModel(id: "deepseek-chat", provider: .deepseek, displayName: "DeepSeek Chat", isFree: false, contextLimit: 128_000),
+        AIModel(id: "deepseek-reasoner", provider: .deepseek, displayName: "DeepSeek Reasoner", isFree: false, contextLimit: 64_000),
         // Ollama (로컬 무료 모델 — 대표 모델만 정적 등록, 실제 목록은 /api/tags에서 동기화)
         AIModel(id: "llama3.2:latest", provider: .ollama, displayName: "Llama 3.2", contextLimit: 128_000),
         AIModel(id: "gemma2:2b", provider: .ollama, displayName: "Gemma 2 2B", contextLimit: 8_192),
@@ -145,6 +161,25 @@ final class ModelCatalog: ObservableObject {
     static let imageModels: [AIModel] = [
         AIModel(id: "gpt-image-1", provider: .openAI, displayName: "GPT Image 1", isFree: false, contextLimit: 0),
         AIModel(id: "dall-e-3", provider: .openAI, displayName: "DALL·E 3", isFree: false, contextLimit: 0),
+    ]
+
+    // MARK: - 오디오 TTS 모델 (v0.3.3 T-332)
+    /// 채팅 피커에 노출되지 않는 전용 TTS 모델. NVIDIA NIM 호환 /audio/speech 사용.
+    /// Magpie ID·voice는 클라우드 실기동 미검증 — 404면 기존 자동제외가 처리.
+    static let audioModels: [AIModel] = [
+        AIModel(id: "nvidia/magpie-tts", provider: .nvidia, displayName: "Magpie TTS (무료)", contextLimit: 0),
+    ]
+
+    /// 모드별 추천 모델 기본 활성화 세트 (T-332) — "provider:id" 키.
+    /// 오버라이드 없는 모델은 이 세트만 기본 ON (Apple Intelligence 기존 유지).
+    static let defaultEnabledIDs: Set<String> = [
+        "OpenCode:opencode/muse-spark-1.3-contributor-free",
+        "OpenRouter:cohere/north-mini-code:free",
+        "NVIDIA:qwen/qwen3-coder-480b-a35b-instruct",
+        "OpenCode:opencode/big-pickle",
+        "NVIDIA:nvidia/magpie-tts",
+        "OpenAI:gpt-image-1",
+        "OpenAI:dall-e-3",
     ]
 
     init(defaults: UserDefaults = .standard) {
@@ -338,8 +373,11 @@ final class ModelCatalog: ObservableObject {
         if !Self.appleAvailable(model: model, modelAvailable: AppleIntelligenceSupport.modelAvailable) {
             return false
         }
-        // 기본값 해제 (v0.2.2): 명시되지 않은 모델은 사용 안 함. Apple Intelligence(온디바이스)만 기본 사용.
+        // 기본값 해제 (v0.2.2): 명시되지 않은 모델은 사용 안 함.
+        // 단 모드별 추천 세트(defaultEnabledIDs)는 기본 ON (T-332).
+        // 저장된 오버라이드(수동 ON/OFF 포함)가 있으면 항상 우선.
         if let override = enabledOverrides[overrideKey(model)] { return override }
+        if Self.defaultEnabledIDs.contains(overrideKey(model)) { return true }
         return model.provider == Provider.appleIntelligence
     }
 
@@ -776,16 +814,16 @@ final class ModelCatalog: ObservableObject {
         models.filter { $0.provider == provider }
     }
 
-    /// 429(rate 한도) 자동 폴백용 무료 활성 모델 우선순위 (v3.4 T-162)
-    /// Groq → NVIDIA → Gemini → OpenRouter 순. 기본 모델 폴백과 요청 중 폴백 모두에 사용한다.
+    /// 429(rate 한도) 자동 폴백용 무료 활성 모델 우선순위 (v3.4 T-162, v0.3.3 T-331 갱신)
+    /// Zen Muse Spark → OpenRouter North Mini Code → Zen Ultra → NVIDIA → Gemini 순.
     /// - `isFree`가 아니거나, 사용 해제(enabledOverrides=false)된 모델은 제외
     /// - `excluding`에 지정한 모델은 제외(현재 rate 실패 모델을 건너뛰기)
     static let fallbackPriority: [(id: String, provider: Provider)] = [
-        ("llama-3.3-70b-versatile", .groq),
+        ("opencode/muse-spark-1.3-contributor-free", .opencode),
+        ("cohere/north-mini-code:free", .openRouter),
+        ("opencode/nemotron-3-ultra-free", .opencode),
         ("openai/gpt-oss-20b", .nvidia),
         ("gemini-3.6-flash", .gemini),
-        ("google/gemini-2.5-flash-preview:free", .openRouter),
-        ("deepseek/deepseek-chat-v3-0324:free", .openRouter),
     ]
 
     /// 우선순위 리스트에서 활성화된 무료 모델을 순서대로 반환 (발견 시 즉시 .first 사용 가능)

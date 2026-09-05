@@ -2,6 +2,82 @@
 
 이 프로젝트는 **v0.1.0** 초기 릴리스이며, 여기서부터 신규 출발합니다. (이전 이력 없음)
 
+## [0.3.3] — 2026-09-05 (검증 무료 모델 카탈로그)
+
+> 외부 무료 모델 정리 문서 대조 후 검증된 무료 모델만 반영 (기준일 2026-09-05)
+
+### 검증 원천
+- Zen: `opencode.ai/docs/zen` — 무료 6종 확정 (Big Pickle·MiMo-V2.5·Ling 3.0 Flash Fin·Nemotron 3 Ultra·Nemotron 3.5 Lightning·Muse Spark 1.3 Contributor)
+- OpenRouter: `/api/v1/models` — `:free` 19종 ID·컨텍스트 확정 (외부 문서 표기와 ID까지 일치)
+- NIM: 키 없이 검증 불가 → 정적 추가 없음 (NVIDIA refresh에 위임)
+
+### 변경
+- **defaultModels**: 사망 OR `:free` 4종 제거 (gemini-2.5-flash-preview·deepseek-v3-0324·llama-4-maverick·qwen3-235b — 목록에서 소멸 확인) + OR 무료 15종(North Mini Code·Laguna S/XS·Nemotron Ultra/Super/Lightning/Nano Omni·MiniMax M3/M2.7·Inkling/Small·Ling Fin·Dots3·GLM 5.2·LFM 2.5) + Zen 3종(Lightning·Ling Fin·Muse Spark 1.3) 추가
+- **fallbackPriority**(T-162): Zen Muse Spark → OR North Mini Code → Zen Ultra → NVIDIA gpt-oss-20b → Gemini 3.6 Flash + 테스트 동기 수정
+- **codingPreferredIDs**: 검증 무료 코딩 ID 정식 ID로 추가 (기존 유료 유지)
+- **supportsVision**: mimo·inkling·nano-omni·minimax-m3 키워드 추가
+
+### 주의
+- Muse Spark 1.3 Contributor Free는 Zen 문서상 `/responses` 엔드포인트 — 앱의 chat/completions 직결은 **실기동 확인 필요** (실패 시 설정에서 해제)
+- 무료 라인업은 수시 변동 — 다음 갱신 시 0단계(당일 대조) 반복
+
+### T-332 오디오 모드 + 추천 일원화 + 추천 기본 활성화
+- **오디오 모드**: `ChatMode.audio` + 세션별 TTS 모델 선택 + `AudioClient`(NIM 호환 `/audio/speech` JSON, mp3) + `sendAudio`(2000자 절단, 플레이스홀더→mp3 첨부) + 말풍선 재생/정지 행(AVAudioPlayer 메모리 재생)
+- **NIM 대조**: Magpie(`nvidia/magpie-tts-zeroshot` 실존, 클라우드는 OpenAI 호환 스키마) · Qwen3-Coder ID 확정(`qwen/qwen3-coder-480b-a35b-instruct`, 262144) 후 기본 목록에 추가
+- **코딩 추천 순위**: 팝오버 추천 섹션을 문서 순위 고정 (Muse Spark→North→Qwen3-Coder→Big Pickle)
+- **추천 기본 활성화**: `defaultEnabledIDs` 7종 — 무오버라이드 시 기본 ON, 저장된 OFF 존중, 나머지 opt-in 유지
+- **주의**: Magpie voice 미지정(서버 기본값, 한국어 voice ID 미확인) · Magpie 모델 ID 클라우드 실기동 확인 필요 (404면 자동제외)
+
+### T-333 전체 MCP 공급자 자동/수동 OAuth 병행 (T-328 흡수)
+- **모드 선택**: OAuth 템플릿 연결 화면에 [자동|수동] 세그먼트 (기본값=템플릿 권장) — Linear/GitHub도 자동 시도 가능, DCR 전용이던 공급자도 수동 가능
+- **커스텀 엔드포인트**: 수동 폼에 Authorize/Token URL 입력 추가 (템플릿값 프리필·편집 가능) + 설정에 영속화 (`customAuthorizationEndpoint`·`customTokenEndpoint`, 구저장 호환)
+- **템플릿 확정값**: GitLab·Slack 수동 엔드포인트 당일 대조 후 기입. Notion·Atlassian은 비표준 토큰 교환(JSON/Basic·audience)이라 미기입 — 커스텀 입력 + 후속 과제
+- **갱신 경로**: `refreshToken`이 커스텀 토큰 엔드포인트 우선 사용 (수동 연결 갱신 실패 해소)
+- **연결 기록**: 수동 연결 시 `authMode=.oauth21Manual`, 자동 시 `.oauth21DCR` 명시 저장
+
+## [0.3.2] — 2026-09-05 (토큰 상태 표시)
+
+> 비용(USD) 추정 제거 — "실제 토큰 상황만" 표시: 채팅 하단 남음 배지·팝오버 + 설정 토큰 상태 탭
+
+### 축1 — 비용 제거
+- **ChatMessage.costUSD / SessionCost / AIModel 가격 필드(inputPricePerM·outputPricePerM·isPaid)** 삭제 — 가격=공급자 과금 선불 모델과 불일치하는 추정치라 제거
+- **ModelsSettingsView 가격 편집 UI**(AddModel 가격 입력·가격 컬럼) 제거, 카탈로그 하드코딩 가격 인자 제거
+- **말풍선 실비용 라벨·CostSettingsView·"비용/토큰" 탭** 삭제 → "토큰 상태" 탭(tuningfork 아이콘)으로 대체
+
+### 축2 — 토큰 배지
+- **TokenQuota.swift 신규**: 선택 모델 기준 `ModelTokenSnapshot`(현재 세션 동일 모델 실측 usage 누적 → 없으면 추정 폴백) + 공급자 계정 풀 `ProviderAccountQuota`(Anthropic `x-ratelimit-*` 헤더 실측, nonisolated 캡처→MainActor 갱신)
+- **AnthropicClient** 양 응답 지점(도구/일반)에 헤더 캡처 주입 → 계정 남음 표시
+- **ChatInputBarView**: tokenMeter → "남음 N 토큰" 배지(ratio>0.9 빨강/0.7 오렌지) + 클릭 팝오버(모델·계정 풀·실측↑↓·사용/남음 게이지·갱신 시각)
+
+### 축3 — 설정 토큰 상태 탭
+- **TokenStatusSettingsView**: 사용 기록(실측>0)이 있는 공급자·모델만 테이블 — 모델명/ID·한도·실측↑↓·사용/남음 막대 + 계정 잔량 카드
+
+### 축4 — MCP 설정 UI 정비 (이번 세션)
+- **2중 헤더 제거**: `ThemedSettingsCard("원격 MCP 공급자")` 타이틀 제거 → 내부 헤더 HStack(제목 + "N/M 연결됨 · 도구 N개 · 전체 N" 요약 + 상태 확인/공급자 연결) 단독
+- **ProviderCard 레이아웃 수정**: `MinimalCard.overlay(VStack.padding)` → `.padding(16).background(MinimalCard)` — 카드 배경이 콘텐츠를 감싸 헤더 겹침/콘텐츠 잘림 해소 (SimpleCard와 패턴 통일)
+- **GradientButton 다크 복구**: `ColorHex.isLightColor`(백색 계열 sRGB luminance>0.6) 감지 → 전경색/스피너 tint 반전
+- **삭제 컨펌**: 동일 뷰 `.alert` 2개(공급자/서버)는 macOS에서 첫 번째 무시 → `MCPDeletionTarget` enum + 단일 `.alert(item:)`("'X' 공급자/서버 삭제")로 통합
+- **빈 상태 축소**: `EmptyStateView.compact`(캐릭터 160→80, 타이틀 20→14, maxWidth 420→260) — MCP 설정에서 compact 적용
+- **MCP 공급자 중복 방지**(T-326): 동일 templateID+정규화 URL은 기존 항목 id 재사용·isEnabled 보존
+- **수동 OAuth 연결**(T-327): Linear/GitHub 템플릿을 `.oauth21Manual`로 전환 + Client ID/Secret 입력 폼 + 고정 루프백 포트(13000) 리다이렉트 URI 복사 + `MCPOAuthService` 수동 엔드포인트 경로(디스커버리/DCR 생략, client_secret 교환 지원)
+  - 배경: Linear/GitHub 등 다수 공급자가 DCR(동적 등록) 미지원 — 실제 자동 연결 가능 공급자는 Vercel/Atlassian/Supabase 3곳뿐 (ASM/OIDC/registration 엔드포인트 네트워크 검증)
+
+### 축5 — 용도 모드 UX 완성 (T-329)
+- **모드 세그먼트 동작 복구**: `setMode`가 세션 모드만 바꾸고 `_cachedSession` 무효화를 안 해 Picker가 stale 상태(항상 채팅)로 보이고 이미지 전송 분기가 미동작이던 버그 수정 — 캐시 무효화 + 세션 영속화 추가
+- **이미지 모델 선택**: `ChatSession.selectedImageModelID` 추가 + 이미지 전송(`send`)이 `imageModels.first` 고정 대신 세션 선택 모델 사용(gpt-image-1/dall-e-3 메뉴)
+- **코딩 모델 선택**: `ChatSession.selectedCodingModelID` + 입력바 메뉴(사전 정의 코딩 추천 세트 ∩ 활성 모델 → "추천/전체" 섹션 분리, 미선택 시 현재 모델 사용)
+- **코딩 작업줄**: 워크스페이스 폴더 선택(NSOpenPanel)·변경·해제 버튼 + 미지정 경고("파일 도구 비활성") — `AppSettings.workspaceFolder` 공유
+- **코딩 파일 목록 패널**: 입력바 위 접이식 패널(상위 3레벨, 디렉터리 우선 정렬, 숨김 제외) + 파일 컨텍스트 메뉴(경로 복사/채팅 입력창에 경로 삽입) — `WorkspaceFileRow` 재귀 View (opaque 재귀 함수 컴파일 오류 회피)
+- **IME 교착 수정**: 코딩 모델 선택 `Menu`(이중 Section)가 한글 입력과 교차해 IMK→TSM 동기 XPC 응답 유실 → 메인 스레드 `HIRunLoopSemaphore` 스핀(CPU 105%, 한글 입력 전면 불가) 유발 확인 — 원인 실험(메뉴 제거 시 정상) 후 **이미지/코딩 모델 선택을 `.popover` 목록으로 교체**(Menu 원천 배제, `ModelSection` 공통 뷰, 추천/전체 섹션 + 선택 체크) — 적용 규칙: 입력바 텍스트 근처에 Menu 금지
+- **세그먼트 좌측 정렬**: `frame(width:)`이 내용을 그 폭 안에서 **중앙 정렬**시키는 특성 때문에 채팅/이미지/코딩 세그먼트가 (260−165)/2≈47pt 오른쪽으로 밀림 — `HStack+Spacer` 래퍼 + `.frame(width: 260, alignment: .leading)`으로 세그먼트를 주 버튼줄(X=204)과 동일 열로 고정(`maxWidth:.infinity` 단독은 Spacer로 이미 가득 차 무효) — AX read-only 좌표 측정으로 X=204 일치 검증
+
+### 검증
+- smoke/유닛: `ProviderAndModelSortTestsV31` 통과, xcodebuild 빌드 성공
+- AX 검증: 배지 "남음 115.3K 토큰" 표시 + 팝오버 창 생성, 설정 탭 모델 테이블(GPT-OSS-20B 실측 51.3k 사용/79.8k 남음) 확인, 추정값(Nemotron) 행 제외 확인
+- MCP UI: 2중 헤더 제거·카드 겹침 해소 AX 확인, 삭제 컨펌(단일 alert)·compact 빈 상태·수동 OAuth 폼 구현 후 사용자 실기동 확인 대기
+- 축5(T-329): 빌드 성공 + `~/Applications` 설치·실행 완료 — 모드 선택/모델·폴더 UI·파일 패널 실기동 확인 대기 (사용자 "컴퓨터 제어 하지마" 지침으로 AX 자동화 미수행)
+- IME 교착: `sample` 스택으로 원인 특정(메인 스레드 `HIRunLoopSemaphore wait` 1933/1933 샘플, 입력기 KIM_Extension idle), 원인 실험(코딩 모델 Menu 제거 시 한글 입력 정상, 채팅/이미지는 정상) — 팝오버 교체판 빌드·설치 완료, 사용자 실기동 대기(AX 자동화 금지 지침, 사용자가 직접 확인)
+
 ## [0.3.1] — 2026-09-05 (축4 용도 모드 분리 + 이미지 생성) · `3d539a0`
 
 > AI 채팅 기능 전면 실현 마지막 축 — 채팅/이미지/코딩 용도 모드 분리와 DALL-E·이미지 생성 파이프라인 추가

@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import UniformTypeIdentifiers
 
 // MARK: - 말풍선 뷰 (카카오톡 스타일 + macOS 소재)
@@ -133,10 +134,13 @@ struct AssistantBubbleView: View {
                 }
 
                 // 생성 이미지 표시 (v0.3.x 축4) — 본문 위에 표시, 저장 버튼 제공
+                // 합성 오디오 표시 (v0.3.3 T-332) — 오디오 첨부는 재생 행으로 표시
                 if let attachments = message.attachments, !attachments.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(attachments) { attachment in
-                            if let image = NSImage(data: attachment.imageData) {
+                            if attachment.mimeType.hasPrefix("audio/") {
+                                AudioAttachmentRow(attachment: attachment)
+                            } else if let image = NSImage(data: attachment.imageData) {
                                 HStack(alignment: .top, spacing: 6) {
                                     Image(nsImage: image)
                                         .resizable()
@@ -373,5 +377,77 @@ struct ToolRunCardView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: theme.radiusCard).fill(theme.cardBackground.opacity(0.6)))
+    }
+}
+
+// MARK: - 합성 오디오 재생 행 (v0.3.3 T-332)
+
+/// TTS 합성 오디오 첨부 재생 — 메모리 내 Data를 AVAudioPlayer로 재생/정지
+struct AudioAttachmentRow: View {
+    let attachment: MessageAttachment
+    @StateObject private var player = AudioAttachmentPlayer()
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                player.toggle(data: attachment.imageData)
+            } label: {
+                Image(systemName: player.isPlaying ? "stop.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(theme.accentColor)
+            }
+            .buttonStyle(.plain)
+            .help(player.isPlaying ? "정지" : "재생")
+            VStack(alignment: .leading, spacing: 1) {
+                Text(attachment.fileName ?? "합성 음성")
+                    .font(.caption)
+                    .foregroundStyle(theme.primaryText)
+                    .lineLimit(1)
+                Text("\(attachment.imageData.count / 1024) KB · mp3")
+                    .font(.caption2)
+                    .foregroundStyle(theme.secondaryText)
+            }
+            Spacer()
+            Image(systemName: "waveform")
+                .font(.caption)
+                .foregroundStyle(theme.secondaryText)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: 320)
+        .background(RoundedRectangle(cornerRadius: theme.radiusCard).fill(theme.cardBackground.opacity(0.6)))
+        .onDisappear { player.stop() }
+    }
+}
+
+/// 오디오 재생 홀더 — delegate를 self로 유지해 약참조 해제 방지 (T-332)
+@MainActor
+final class AudioAttachmentPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
+    @Published var isPlaying = false
+    private var player: AVAudioPlayer?
+
+    func toggle(data: Data) {
+        if isPlaying { stop(); return }
+        do {
+            let p = try AVAudioPlayer(data: data)
+            p.delegate = self
+            player = p
+            p.play()
+            isPlaying = true
+            DebugLogger.shared.info("AUDIO", "[FEATURE] 합성 음성 재생 시작 — \(data.count) bytes")
+        } catch {
+            DebugLogger.shared.error("AUDIO", "합성 음성 재생 실패: \(error.localizedDescription)")
+        }
+    }
+
+    func stop() {
+        player?.stop()
+        player = nil
+        isPlaying = false
+    }
+
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in self.isPlaying = false }
     }
 }

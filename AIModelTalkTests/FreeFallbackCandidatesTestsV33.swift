@@ -22,16 +22,16 @@ final class FreeFallbackCandidatesTestsV33: XCTestCase {
         super.tearDown()
     }
 
-    /// 우선순위 순서: Groq → NVIDIA → Gemini → OpenRouter → OpenRouter (활성+무료 기본)
+    /// 우선순위 순서: Zen Muse Spark → OpenRouter North Mini Code → Zen Ultra → NVIDIA → Gemini (T-331)
     func testPriorityOrder() {
         let candidates = ModelCatalog.freeFallbackCandidates()
         let ids = candidates.map { "\($0.provider.rawValue):\($0.id)" }
         XCTAssertEqual(ids, [
-            "Groq:llama-3.3-70b-versatile",
+            "OpenCode:opencode/muse-spark-1.3-contributor-free",
+            "OpenRouter:cohere/north-mini-code:free",
+            "OpenCode:opencode/nemotron-3-ultra-free",
             "NVIDIA:openai/gpt-oss-20b",
             "Gemini:gemini-3.6-flash",
-            "OpenRouter:google/gemini-2.5-flash-preview:free",
-            "OpenRouter:deepseek/deepseek-chat-v3-0324:free",
         ])
     }
 
@@ -47,16 +47,16 @@ final class FreeFallbackCandidatesTestsV33: XCTestCase {
         ModelCatalog.shared.enabledOverrides["NVIDIA:openai/gpt-oss-20b"] = false
         let ids = ModelCatalog.freeFallbackCandidates().map { $0.id }
         XCTAssertFalse(ids.contains("openai/gpt-oss-20b"), "비활성 NVIDIA 모델은 제외되어야 함")
-        XCTAssertEqual(ids.first, "llama-3.3-70b-versatile", "Groq가 새 1순위가 되어야 함")
+        XCTAssertEqual(ids.first, "opencode/muse-spark-1.3-contributor-free", "Zen Muse Spark가 새 1순위가 되어야 함")
     }
 
     /// excluding(현재 모델) — 현재 rate 실패 모델은 제외
     func testCurrentModelExcluded() {
-        let current = ModelCatalog.shared.models.first { $0.id == "llama-3.3-70b-versatile" && $0.provider == .groq }!
+        let current = ModelCatalog.shared.models.first { $0.id == "opencode/muse-spark-1.3-contributor-free" && $0.provider == .opencode }!
         let candidates = ModelCatalog.freeFallbackCandidates(excluding: current)
-        let groqPresent = candidates.contains { $0.provider == .groq }
-        XCTAssertFalse(groqPresent, "현재(Groq) 모델은 후보에서 제외되어야 함")
-        XCTAssertEqual(candidates.first?.id, "openai/gpt-oss-20b", "다음 순위는 NVIDIA여야 함")
+        let sparkPresent = candidates.contains { $0.id == "opencode/muse-spark-1.3-contributor-free" }
+        XCTAssertFalse(sparkPresent, "현재(Zen Muse Spark) 모델은 후보에서 제외되어야 함")
+        XCTAssertEqual(candidates.first?.id, "cohere/north-mini-code:free", "다음 순위는 OpenRouter North Mini Code여야 함")
     }
 
     /// excluding이 nil이면 현재 모델 제외하지 않음
@@ -65,11 +65,11 @@ final class FreeFallbackCandidatesTestsV33: XCTestCase {
         XCTAssertEqual(candidates.count, 5)
     }
 
-    /// primaryFallbackModel — 첫 활성 무료 모델(Groq). 전부 비활성 시 등록 목록 첫 모델로 폴백
+    /// primaryFallbackModel — 첫 활성 무료 모델(Zen Muse Spark). 전부 비활성 시 등록 목록 첫 모델로 폴백
     func testPrimaryFallbackModel() {
         let primary = ModelCatalog.primaryFallbackModel()
-        XCTAssertEqual(primary.id, "llama-3.3-70b-versatile")
-        XCTAssertEqual(primary.provider, .groq)
+        XCTAssertEqual(primary.id, "opencode/muse-spark-1.3-contributor-free")
+        XCTAssertEqual(primary.provider, .opencode)
     }
 
     /// 우선순위 전체 비활성 시 primaryFallbackModel은 등록 목록 첫 모델 폴백 (가드)
