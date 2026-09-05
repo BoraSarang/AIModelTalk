@@ -21,6 +21,7 @@ struct ChatInputBarView: View {
     @State private var showImageModelPicker = false
     @State private var showCodingModelPicker = false
     @State private var showAudioModelPicker = false
+    @State private var toolbarHover: String?
 
     var body: some View {
         VStack(spacing: 8) {
@@ -110,9 +111,16 @@ struct ChatInputBarView: View {
                                 .font(.caption)
                         }
                         .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: theme.inputCornerRadius).fill(theme.inputBackground))
+                        .overlay(RoundedRectangle(cornerRadius: theme.inputCornerRadius).strokeBorder(theme.inputBorder))
+                        .brightness(toolbarHover == "attach" ? 0.08 : 0)
+                        .animation(.easeOut(duration: 0.12), value: toolbarHover == "attach")
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
+                    .onHover { toolbarHover = $0 ? "attach" : nil }
                     .help("이미지 첨부 (최대 \(ChatViewModel.maxAttachments)개) — 붙여넣기(⌘V)로도 첨부")
                     // 웹 검색 토글 (v1.8 T-72)
                     if AppSettings.shared.webSearchEnabled {
@@ -126,11 +134,15 @@ struct ChatInputBarView: View {
                                     .font(.caption)
                             }
                             .foregroundStyle(viewModel.webSearchForNextSend ? theme.accentColor : theme.secondaryText)
-                            .padding(.horizontal, 4)
-                            .background(viewModel.webSearchForNextSend ? theme.accentColor.opacity(0.15) : .clear)
-                            .clipShape(RoundedRectangle(cornerRadius: theme.inputCornerRadius))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(RoundedRectangle(cornerRadius: theme.inputCornerRadius).fill(viewModel.webSearchForNextSend ? theme.accentColor.opacity(0.15) : theme.inputBackground))
+                            .overlay(RoundedRectangle(cornerRadius: theme.inputCornerRadius).strokeBorder(viewModel.webSearchForNextSend ? theme.accentColor.opacity(0.55) : theme.inputBorder))
+                            .brightness(toolbarHover == "web" ? 0.08 : 0)
+                            .animation(.easeOut(duration: 0.12), value: toolbarHover == "web")
                         }
                         .buttonStyle(.plain)
+                        .onHover { toolbarHover = $0 ? "web" : nil }
                         .help(viewModel.webSearchForNextSend ? "웹 검색 켜짐 — 이번 전송에 적용" : "이번 전송에 웹 검색 사용")
                     }
                     // ⋯ 더보기 — 덜 쓰는 기능 (아이콘+라벨 컨텍스트 메뉴)
@@ -153,12 +165,23 @@ struct ChatInputBarView: View {
                         Divider()
                         Toggle("MCP 도구 사용", isOn: $settings.mcpToolsEnabled)
                     } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 3) {
+                            Image(systemName: "ellipsis.circle")
+                                .font(.system(size: 13))
+                            Text("더보기")
+                                .font(.caption)
+                        }
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: theme.inputCornerRadius).fill(theme.inputBackground))
+                        .overlay(RoundedRectangle(cornerRadius: theme.inputCornerRadius).strokeBorder(theme.inputBorder))
+                        .brightness(toolbarHover == "more" ? 0.08 : 0)
+                        .animation(.easeOut(duration: 0.12), value: toolbarHover == "more")
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
+                    .onHover { toolbarHover = $0 ? "more" : nil }
                     .help("더 보기 — 비교·시스템 프롬프트·템플릿·MCP")
                 }
                 Spacer()
@@ -259,9 +282,6 @@ struct ChatInputBarView: View {
         }
         .popover(isPresented: $showCompare, arrowEdge: .bottom) {
             CompareSelectorView(viewModel: viewModel, isPresented: $showCompare)
-        }
-        .popover(isPresented: $showTokenStatus, arrowEdge: .bottom) {
-            tokenStatusPopover
         }
     }
 
@@ -819,6 +839,10 @@ struct ChatInputBarView: View {
         }
         .buttonStyle(.plain)
         .help(tokenStatusHelp(snapshot: snapshot, quota: quota))
+        // 팝오버는 배지 버튼에 직접 앵커 — 본체 VStack 앵커는 중앙에 뜸 (T-335)
+        .popover(isPresented: $showTokenStatus, arrowEdge: .bottom) {
+            tokenStatusPopover
+        }
         )
     }
 

@@ -1136,6 +1136,15 @@ final class ChatViewModel: ObservableObject {
         DebugLogger.shared.info("MODE", "[FEATURE] 오디오 TTS 모델 선택: \(model.displayName)")
     }
 
+    /// 코딩 모드 전송 오버라이드 (T-334) — 코딩 모드 + 선택 모델 + 현재 모델과 다를 때만 반환
+    /// midSwitch·fork 재전송은 호출부 의도(전환 모델) 우선이라 이 헬퍼를 쓰지 않음
+    func codingModelOverride(for sessionID: UUID) -> AIModel? {
+        guard sessions.first(where: { $0.id == sessionID })?.mode == .coding,
+              let m = selectedCodingModel(for: sessionID),
+              !(m.id == selectedModel.id && m.provider == selectedModel.provider) else { return nil }
+        return m
+    }
+
     func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isLoading, let sessionID = currentSessionID else { return }
@@ -1159,17 +1168,22 @@ final class ChatViewModel: ObservableObject {
             }
             return
         }
-        // 이미지 첨부 시 비전 지원 모델인지 확인 (T-71)
-        if !pendingAttachments.isEmpty && !selectedModel.supportsVision {
-            attachmentNotice = "'\(selectedModel.displayName)' 모델은 이미지를 지원하지 않습니다. 비전 지원 모델(👁)로 변경해 주세요."
-            DebugLogger.shared.warn("SEND", "[E-MAC-VALID-1001] 비전 미지원 모델에 이미지 첨부 시도: \(selectedModel.id)")
+        // 이미지 첨부 시 비전 지원 모델인지 확인 (T-71) — 코딩 모드면 선택 코딩 모델 기준 (T-334)
+        let codingOverride = codingModelOverride(for: sessionID)
+        let effectiveModel = codingOverride ?? selectedModel
+        if !pendingAttachments.isEmpty && !effectiveModel.supportsVision {
+            attachmentNotice = "'\(effectiveModel.displayName)' 모델은 이미지를 지원하지 않습니다. 비전 지원 모델(👁)로 변경해 주세요."
+            DebugLogger.shared.warn("SEND", "[E-MAC-VALID-1001] 비전 미지원 모델에 이미지 첨부 시도: \(effectiveModel.id)")
             return
         }
         attachmentNotice = nil
         inputText = ""
+        if let codingModel = codingOverride {
+            DebugLogger.shared.info("MODE", "[FEATURE] 코딩 모델로 전송: \(codingModel.displayName)")
+        }
         let attachments = pendingAttachments
         pendingAttachments = []
-        sendMessage(text, to: sessionID, attachments: attachments)
+        sendMessage(text, to: sessionID, attachments: attachments, modelOverride: codingOverride)
     }
 
     // MARK: - 이미지 생성 전송 (v0.3.x 축4)
@@ -1355,7 +1369,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// 메인 입력창·빠른 대화 패널 공통 전송 코어
-    func sendMessage(_ text: String, to sessionID: UUID, attachments: [MessageAttachment] = [], reuseLastUser: Bool = false) {
+    func sendMessage(_ text: String, to sessionID: UUID, attachments: [MessageAttachment] = [], reuseLastUser: Bool = false, modelOverride: AIModel? = nil) {
         guard !text.isEmpty, !isLoading,
               let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }) else {
             // 조용한 차단은 재현 디버깅을 어렵게 한다 — 차단 사유 반드시 기록 (v2.1 T-104)
@@ -1364,8 +1378,10 @@ final class ChatViewModel: ObservableObject {
             return
         }
 
+        // 코딩 모드 오버라이드 (T-334) — 미지정 시 현재 모델
+        let sendModel = modelOverride ?? selectedModel
         DebugLogger.shared.info("SEND", "메시지 전송 시작: \(text.prefix(50))...")
-        DebugLogger.shared.info("SEND", "모델: \(selectedModel.id) | 공급자: \(selectedModel.provider.rawValue)\(attachments.isEmpty ? "" : " | 이미지 \(attachments.count)개")")
+        DebugLogger.shared.info("SEND", "모델: \(sendModel.id) | 공급자: \(sendModel.provider.rawValue)\(attachments.isEmpty ? "" : " | 이미지 \(attachments.count)개")")
 
         // 미드스위치 재전송(reuseLastUser)이면 마지막 사용자 메시지를 새로 추가하지 않고 재사용 (T-207)
         if !reuseLastUser {
@@ -1387,15 +1403,15 @@ final class ChatViewModel: ObservableObject {
         let assistantMessage = ChatMessage(
             role: .assistant,
             content: "",
-            provider: selectedModel.provider,
-            modelID: selectedModel.id,
+            provider: sendModel.provider,
+            modelID: sendModel.id,
             isStreaming: true
         )
         let ctx = SendContext(
             sessionID: sessions[sessionIndex].id,
             assistantMessageID: assistantMessage.id,
             history: Self.effectiveHistory(from: sessions[sessionIndex].messages),
-            model: selectedModel,
+            model: sendModel,
             temperature: nil
         )
         mutateMessages(of: ctx.sessionID) { $0.append(assistantMessage) }

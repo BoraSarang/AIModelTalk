@@ -39,6 +39,17 @@
 - **Splash 0.16.0 SPM 해결** (이전 xcodegen 실패 해소) + `CodeBlockView`의 Swift 경로를 Splash `AttributedString` 하이라이트로 교체 — 타언어(python/js 등)는 기존 정규식 유지 (Splash 문법이 Swift 전용)
 - **AppSplashTheme**: 기존 One-Dark 계열 hex 팔레트 매핑, 평문은 시맨틱 컬러로 다크/라이트 대응
 
+### T-334 코딩 모델 선택 미반영 수정
+- **원인**: `selectedCodingModel`이 배지 표시용으로만 읽히고 전송은 항상 세션 현재 모델 — 로그 대조로 확정 (Muse Spark 선택 → gpt-oss-20b 전송)
+- **수정**: `sendMessage`에 `modelOverride` 파라미터 + `codingModelOverride(for:)` 결정 헬퍼 — 코딩 모드+선택 모델+현재와 다를 때만 적용. midSwitch·fork 재전송은 호출부 의도 우선이라 미적용
+
+### T-335 토큰 팝오버 앵커 이동
+- **원인**: 팝오버가 입력바 본체 VStack에 앵커 → 중앙 표시가 정상 동작이었음
+- **수정**: `tokenStatusBadge` 버튼에 직접 앵커 (`arrowEdge: .bottom` 유지) — "⋯" 메뉴 3종은 중앙 표시가 맞아 본체 유지
+
+### T-336 주 라인 배지 통일 (A안)
+- 첨부·웹·더보기에 pill 배경+테두리 적용, 더보기에 "더보기" 라벨 부여, hover 밝기 반응(0.12s) — Menu 구조·동작 불변
+
 ## [0.3.2] — 2026-09-05 (토큰 상태 표시)
 
 > 비용(USD) 추정 제거 — "실제 토큰 상황만" 표시: 채팅 하단 남음 배지·팝오버 + 설정 토큰 상태 탭

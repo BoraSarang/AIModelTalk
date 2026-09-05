@@ -1,5 +1,9 @@
 # TODO — AIModelTalk v0.3.3
 
+- [x] T-334 코딩 모델 선택 미반영 수정 — send() 코딩 분기 (선택 모델로 전송) (2026-09-05)
+- [x] T-335 토큰 팝오버 앵커를 배지 버튼으로 이동 (본체 VStack → 배지) (2026-09-05)
+- [x] T-336 주 라인 배지 통일 — 첨부·웹·더보기 pill + hover (A안) (2026-09-05)
+
 - [x] T-331 검증된 무료 모델 카탈로그 반영 — Zen/OpenRouter/NIM 대조(2026-09-05 기준) 후 defaultModels·fallbackPriority·codingPreferredIDs·supportsVision 갱신 (무료만) (2026-09-05)
 - [x] T-332 오디오 모드 추가 + 모드별 추천 일원화 + 추천 기본 활성화 — ChatMode.audio·AudioClient(NIM /audio/speech)·sendAudio·말풍선 재생·defaultEnabledIDs (2026-09-05)
 - [x] T-333 전체 MCP 공급자 자동/수동 OAuth 병행 — 모드 선택 UI + 커스텀 엔드포인트 + 갱신 경로 반영 (T-328 흡수) (2026-09-05)
