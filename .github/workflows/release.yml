@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: XcodeGen 설치
+        run: brew install xcodegen
+
+      - name: 프로젝트 생성
+        run: xcodegen generate --spec project.yml
+
+      - name: Release 빌드
+        run: >
+          xcodebuild -project AIModelTalk.xcodeproj -scheme AIModelTalk
+          -configuration Release -destination 'platform=macOS'
+          -derivedDataPath build-ci build
+          CODE_SIGN_IDENTITY="-" AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+      - name: zip 패키징
+        run: |
+          APP=$(find build-ci/Build/Products/Release -maxdepth 1 -name '*.app' | head -1)
+          ditto -c -k --keepParent "$APP" AIModelTalk.zip
+
+      - name: GitHub Release 업로드
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AIModelTalk.zip
+          generate_release_notes: true

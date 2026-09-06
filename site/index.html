@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIModelTalk — 무료 AI 모델로 대화하는 macOS 앱</title>
+<meta name="description" content="NVIDIA · OpenRouter · Groq · Gemini 무료 모델을 하나의 macOS 네이티브 채팅 UI에서.">
+<style>
+:root{--bg:#0b0e14;--card:#151a24;--ink:#e8ecf3;--mut:#9aa3b2;--acc:#5aa2ff;--line:#232a38}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;line-height:1.6}
+.wrap{max-width:880px;margin:0 auto;padding:56px 20px 72px}
+.hero{text-align:center;padding:32px 0 8px}
+.hero h1{font-size:44px;margin:0 0 8px;letter-spacing:-1px}
+.hero p{color:var(--mut);font-size:18px;margin:8px 0}
+.btn{display:inline-block;margin:18px 8px 0;padding:13px 28px;border-radius:12px;background:var(--acc);color:#06121f;font-weight:700;text-decoration:none;font-size:17px}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:36px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+.card h3{margin:0 0 6px;font-size:16px}
+.card p{margin:0;color:var(--mut);font-size:14px}
+h2{margin:44px 0 12px;font-size:24px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-weight:600}
+code{background:#1d2330;padding:2px 7px;border-radius:6px;font-size:13px}
+pre{background:#11151d;border:1px solid var(--line);border-radius:12px;padding:16px;overflow-x:auto;font-size:13px}
+.note{color:var(--mut);font-size:14px}
+footer{margin-top:56px;color:var(--mut);font-size:13px;text-align:center}
+footer a{color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <h1>AIModelTalk</h1>
+    <p>무료 AI 모델로 대화하는 macOS 네이티브 채팅 앱</p>
+    <p class="note">NVIDIA · OpenRouter · Groq · Gemini + 커스텀(OpenAI 호환) — 유료 모델은 표시하지 않습니다</p>
+    <a class="btn" href="https://github.com/BoraSarang/AIModelTalk/releases/latest">⬇️ 최신 버전 받기</a>
+    <a class="btn ghost" href="https://github.com/BoraSarang/AIModelTalk">GitHub</a>
+  </div>
+
+  <div class="grid">
+    <div class="card"><h3>💬 네이티브 채팅</h3><p>카카오톡 스타일 말풍선, Markdown 렌더러, 스트리밍 응답</p></div>
+    <div class="card"><h3>⚖️ 비교 모드</h3><p>여러 모델 병렬 응답 + 판정 요약 (⌘⇧C)</p></div>
+    <div class="card"><h3>📊 벤치마크</h3><p>TTFT·총 시간 측정 리더보드 (⌘⇧B)</p></div>
+    <div class="card"><h3>🧠 장기 메모리</h3><p>대화에서 사실 자동 추출, 모든 대화에 주입</p></div>
+    <div class="card"><h3>⚡ 퀵챗</h3><p>글로벌 단축키 빠른 질문 창, 인코그니토 지원</p></div>
+    <div class="card"><h3>🔌 MCP·스킬</h3><p>stdio/HTTP 도구, 권한 게이트, wigolo 웹 검색 내장</p></div>
+  </div>
+
+  <h2>설치</h2>
+  <p>릴리즈에서 <code>AIModelTalk.zip</code>을 받아 <code>~/Applications</code>에 넣으세요. (macOS 14+)</p>
+  <p class="note">서명되지 않은 앱이라 첫 실행 시 Gatekeeper 경고가 뜰 수 있습니다. 우클릭 → 열기, 또는 아래 명령을 실행하세요.</p>
+  <pre>xattr -d com.apple.quarantine ~/Applications/AIModelTalk.app</pre>
+  <p class="note">직접 빌드: <code>xcodegen generate --spec project.yml</code> 후 <code>./build_and_run.sh debug macos</code></p>
+
+  <h2>공급자</h2>
+  <table>
+    <tr><th>공급자</th><th>키 관리</th><th>무료 모델</th></tr>
+    <tr><td>NVIDIA</td><td>키체인 자동 감지</td><td>GPT-OSS-20B 등</td></tr>
+    <tr><td>OpenRouter</td><td>수동 입력</td><td>:free 계열</td></tr>
+    <tr><td>Groq</td><td>수동 입력</td><td>무료 티어</td></tr>
+    <tr><td>Gemini</td><td>수동 입력</td><td>Flash 무료 티어</td></tr>
+    <tr><td>커스텀</td><td>URL 직접 입력</td><td>사용자 지정 (OpenAI 호환)</td></tr>
+  </table>
+
+  <h2>자주 묻는 질문</h2>
+  <p><b>비용이 드나요?</b><br><span class="note">앱은 무료·MIT 라이선스이며 유료 모델을 표시하지 않습니다. 각 공급자의 무료 티어 정책을 따릅니다.</span></p>
+  <p><b>API 키는 어디에 저장되나요?</b><br><span class="note">macOS Keychain에만 저장됩니다. 코드·설정 파일에 남지 않습니다.</span></p>
+
+  <footer>MIT © BoraSarang · <a href="https://github.com/BoraSarang/AIModelTalk">GitHub</a></footer>
+</div>
+</body>
+</html>

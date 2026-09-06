@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: XcodeGen 설치
+        run: brew install xcodegen
+
+      - name: 프로젝트 생성
+        run: xcodegen generate --spec project.yml
+
+      - name: Debug 빌드
+        run: >
+          xcodebuild -project AIModelTalk.xcodeproj -scheme AIModelTalk
+          -configuration Debug -destination 'platform=macOS' build
+
+      - name: Unit 테스트
+        run: >
+          xcodebuild test -project AIModelTalk.xcodeproj -scheme AIModelTalk
+          -configuration Debug -destination 'platform=macOS'
