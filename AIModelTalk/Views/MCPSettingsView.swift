@@ -380,6 +380,7 @@ private struct MCPServerEditSheet: View {
         let args: [String]
     }
     private let presets: [Preset] = [
+        Preset(name: "wigolo (웹 검색)", command: "npx", args: ["-y", "wigolo"]),
         Preset(name: "filesystem", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", NSHomeDirectory()]),
         Preset(name: "memory", command: "npx", args: ["-y", "@modelcontextprotocol/server-memory"]),
         Preset(name: "fetch (uvx)", command: "uvx", args: ["mcp-server-fetch"]),
@@ -417,7 +418,14 @@ private struct MCPServerEditSheet: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    TextField("명령어 (예: npx, uvx, node)", text: $config.command)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text("명령어").font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Text("예: npx, uvx, node").font(.caption).foregroundStyle(.tertiary)
+                        }
+                        TextField("npx", text: $config.command)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
                         Text("인자 (한 줄에 하나)").font(.caption).foregroundStyle(.secondary)
                         TextEditor(text: $argsText)

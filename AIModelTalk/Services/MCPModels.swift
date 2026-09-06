@@ -127,6 +127,22 @@ struct MCPTool: Identifiable, Hashable {
     let inputSchemaJSON: String
 }
 
+/// wigolo 기본 시드 (T-342) — 로컬 웹 검색 MCP, 마이그레이션 멱등용 고정 ID
+extension MCPServerConfig {
+    static let wigoloSeedID = UUID(uuidString: "7C4E9A01-5B3D-4F2E-8A6C-1D0E5F7A9B42")!
+
+    static func wigoloSeed() -> MCPServerConfig {
+        MCPServerConfig(
+            id: wigoloSeedID,
+            name: "wigolo",
+            command: "npx",
+            args: ["-y", "wigolo"],
+            isEnabled: true,
+            transport: .stdio
+        )
+    }
+}
+
 /// 서버 등록소 — UserDefaults에 JSON 배열로 영속화 (시크릿 제외) (v2.4 T-119)
 @MainActor
 final class MCPServerStore: ObservableObject {
@@ -135,6 +151,9 @@ final class MCPServerStore: ObservableObject {
     @Published private(set) var servers: [MCPServerConfig]
     private let defaults: UserDefaults
     private static let storageKey = "mcpServers"
+    /// 기본 시드 마이그레이션 버전 (T-342) — 1: wigolo 기본 등록
+    private static let seedVersionKey = "mcpSeedVersion"
+    private static let currentSeedVersion = 1
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -144,7 +163,19 @@ final class MCPServerStore: ObservableObject {
         } else {
             servers = []
         }
+        runSeedMigrationIfNeeded()
         DebugLogger.shared.info("MCP", "[FEATURE] 서버 등록소 초기화: \(servers.count)개")
+    }
+
+    /// 기본 서버 1회성 시드 — 기존 사용자 설정은 보존, 같은 ID가 없으면만 추가
+    private func runSeedMigrationIfNeeded() {
+        guard defaults.integer(forKey: Self.seedVersionKey) < Self.currentSeedVersion else { return }
+        if !servers.contains(where: { $0.id == MCPServerConfig.wigoloSeedID }) {
+            servers.append(.wigoloSeed())
+            persist()
+            DebugLogger.shared.info("MCP", "[FEATURE] wigolo 기본 서버 시드 등록")
+        }
+        defaults.set(Self.currentSeedVersion, forKey: Self.seedVersionKey)
     }
 
     private func persist() {
