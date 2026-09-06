@@ -25,6 +25,11 @@ jobs:
           -configuration Debug -destination 'platform=macOS' build
 
       - name: Unit 테스트
+        # 제외 2종은 러너 환경 의존으로 스킵 (로컬 게이트에서 전체 실행):
+        # - CodingModelOverrideTestsV37: 모델 카탈로그 런타임 갱신 필요
+        # - SkillLoaderTests: ~/.opencode/skills 등 실디렉토리 필요
         run: >
           xcodebuild test -project AIModelTalk.xcodeproj -scheme AIModelTalk
           -configuration Debug -destination 'platform=macOS'
+          -skip-testing:AIModelTalkTests/CodingModelOverrideTestsV37
+          -skip-testing:AIModelTalkTests/SkillLoaderTests
