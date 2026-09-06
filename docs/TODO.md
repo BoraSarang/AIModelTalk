@@ -2,7 +2,7 @@
 
 - [x] T-342 wigolo 기본 내장 MCP — presets 1줄 + 기본 시드(enabled) + npx 탐색기 + E-MAC-MCP-1001 (PLAN: `docs/plans/PLAN-macos-T342.md`, 2026-09-06)
 - [x] T-343 퀵챗 테마 미적용 — 별도 NSPanel 호스팅에 themeEnvironment 미주입 → 2곳에 추가 (2026-09-06)
-- [ ] T-344 README·랜딩·릴리즈·Pages·Actions — README 확장 + site/ 랜딩 + ci/pages/release 워크플로 + v0.1.0 릴리즈 (PLAN: `docs/plans/PLAN-macos-T344.md`)
+- [x] T-344 README·랜딩·릴리즈·Pages·Actions — README 확장 + site/ 랜딩 + ci/pages/release 워크플로 + v0.1.0 릴리즈 (PLAN: `docs/plans/PLAN-macos-T344.md`, 2026-09-06)
 
 # TODO — AIModelTalk v0.3.3
 

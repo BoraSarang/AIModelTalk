@@ -2,7 +2,13 @@
 
 이 프로젝트는 **v0.1.0** 초기 릴리스이며, 여기서부터 신규 출발합니다. (이전 이력 없음)
 
-## [Unreleased] — T-342 wigolo 기본 내장 MCP
+## [Unreleased] — T-342 wigolo 기본 내장 MCP · T-344 릴리즈 자동화
+
+### T-344 README·랜딩·Pages·Actions·릴리즈
+- README 확장(배지·웹사이트·릴리즈 링크·Gatekeeper 안내)
+- `site/index.html` 한국어 랜딩 + Pages 배포(`borasarang.github.io/AIModelTalk`, HTTP 200)
+- Actions 3종: CI(빌드+테스트, 환경 의존 2종 스킵) · Pages · Release(태그 시 zip 업로드)
+- `v0.1.0` 릴리즈 생성, `AIModelTalk.zip` 에셋 포함
 
 ### T-342 wigolo 기본 내장 (A안 + 기본 켜기)
 - `MCPServerEditSheet` presets에 `wigolo (웹 검색)` 1줄 추가
