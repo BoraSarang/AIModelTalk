@@ -28,10 +28,11 @@ final class QuickPanelController {
         ChatViewModel.shared.beginQuickChat()
 
         if let hosting = panel.contentView as? NSHostingView<AnyView> {
-            // 열 때마다 최신 액센트로 재주입 (v2.1 T-100)
+            // 열 때마다 최신 액센트·테마로 재주입 (v2.1 T-100, T-343)
             hosting.rootView = AnyView(
                 QuickChatView(prefill: prefill, onClose: { [weak self] in self?.hide() })
                     .appAccentTint(AppSettings.shared.accentColor)
+                    .themeEnvironment(ThemeManager.shared)
             )
         }
 
@@ -82,6 +83,7 @@ final class QuickPanelController {
         let root = AnyView(
             QuickChatView(prefill: nil, onClose: { [weak self] in self?.hide() })
                 .appAccentTint(AppSettings.shared.accentColor)
+                .themeEnvironment(ThemeManager.shared)
         )
         panel.contentView = NSHostingView(rootView: root)
 

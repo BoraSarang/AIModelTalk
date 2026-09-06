@@ -94,19 +94,23 @@ final class MCPTestsV119: XCTestCase {
     @MainActor
     func testStoreUpsertRemovePersists() throws {
         let store = makeStore()
+        // T-342: 신규 저장소에는 wigolo 시드 1건이 기본 포함
+        XCTAssertEqual(store.servers.count, 1)
+        XCTAssertEqual(store.servers[0].id, MCPServerConfig.wigoloSeedID)
         var config = MCPServerConfig(name: "fs", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"])
         config.secretEnvKeys = ["API_TOKEN"]
 
         store.upsert(config)
-        XCTAssertEqual(store.servers.count, 1)
+        XCTAssertEqual(store.servers.count, 2, "시드 1 + 추가 1")
 
         config.name = "fs-renamed"
         store.upsert(config)
-        XCTAssertEqual(store.servers.count, 1, "같은 ID면 갱신")
-        XCTAssertEqual(store.servers[0].name, "fs-renamed")
+        XCTAssertEqual(store.servers.count, 2, "같은 ID면 갱신")
+        XCTAssertEqual(store.servers.first { $0.id == config.id }?.name, "fs-renamed")
 
         store.remove(config.id)
-        XCTAssertTrue(store.servers.isEmpty)
+        XCTAssertEqual(store.servers.count, 1, "시드만 남음")
+        XCTAssertEqual(store.servers[0].id, MCPServerConfig.wigoloSeedID)
     }
 
     @MainActor

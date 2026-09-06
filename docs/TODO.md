@@ -1,3 +1,8 @@
+# TODO — AIModelTalk v0.3.4 (진행 중)
+
+- [x] T-342 wigolo 기본 내장 MCP — presets 1줄 + 기본 시드(enabled) + npx 탐색기 + E-MAC-MCP-1001 (PLAN: `docs/plans/PLAN-macos-T342.md`, 2026-09-06)
+- [x] T-343 퀵챗 테마 미적용 — 별도 NSPanel 호스팅에 themeEnvironment 미주입 → 2곳에 추가 (2026-09-06)
+
 # TODO — AIModelTalk v0.3.3
 
 - [x] T-337 Follow up 후속질문 — LLM 생성 3개 + 말풍선 섹션 + 클릭 즉시 전송 (2026-09-05)

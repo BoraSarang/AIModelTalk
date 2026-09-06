@@ -2,6 +2,15 @@
 
 이 프로젝트는 **v0.1.0** 초기 릴리스이며, 여기서부터 신규 출발합니다. (이전 이력 없음)
 
+## [Unreleased] — T-342 wigolo 기본 내장 MCP
+
+### T-342 wigolo 기본 내장 (A안 + 기본 켜기)
+- `MCPServerEditSheet` presets에 `wigolo (웹 검색)` 1줄 추가
+- `MCPServerStore` 최초 1회 wigolo 시드 (`isEnabled=true`, 고정 UUID, `mcpSeedVersion` 마이그레이션, 기존 설정 보존)
+- 신규 `MCPExecutableResolver`: `npx/uvx/node` 절대경로 탐색(고정 디렉토리 → nvm → 로그인 셸) — `launchProcess` 절대경로 요구 해결
+- 실패 경로 `E-MAC-MCP-1001` + `error_message_ko.json` 한국어 메시지
+- 테스트 `MCPWigoloSeedTestsV41` 7종 + `MCPTestsV119` 시드 반영 갱신, 빌드 성공
+
 ## [0.3.4] — 2026-09-06 (세션 증발 수정 · T-341)
 
 ### T-341 단일 책임 저장소 분리

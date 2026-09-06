@@ -135,7 +135,12 @@ final class MCPConnection: ObservableObject {
 
     private func launchProcess() throws {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: config.command)
+        // T-342: 베어 명령(npx 등)은 절대경로로 변환 — executableURL 요구사항
+        let executable = try MCPExecutableResolver.resolve(config.command)
+        if executable != config.command {
+            appendLog("실행 파일 탐색: \(config.command) → \(executable)")
+        }
+        process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = config.args
         var env = ProcessInfo.processInfo.environment.merging(config.resolvedEnv()) { current, _ in current }
         env["PATH"] = "/usr/local/bin:/opt/homebrew/bin:" + (env["PATH"] ?? ProcessInfo.processInfo.environment["PATH"] ?? "")
